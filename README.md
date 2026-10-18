@@ -4,7 +4,8 @@
 
 > 从一行代码到一套能活下来的交易系统。
 
-在线阅读：<https://liuchang0812.github.io/quant-textbook/>
+在线阅读：**<https://www.liuchang0812.com/quant-textbook/>**
+（备用：<https://liuchang0812.github.io/quant-textbook/>）
 
 ---
 
