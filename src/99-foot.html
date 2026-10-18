@@ -1,0 +1,802 @@
+<div class="book-foot">
+  <div class="wrap">
+    <div style="font-family:var(--font-serif);font-size:16px;color:var(--ink-2);">交易的科学与手艺</div>
+    <div style="font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;color:var(--ink-4);margin-top:5px;">
+      v1.0 · 2026 · 单文件 HTML
+    </div>
+    <p style="max-width:62ch;font-size:12px;line-height:1.85;color:var(--ink-3);margin-top:16px;margin-bottom:0;">
+      本书不构成任何投资建议。市场有风险，代码也有 bug。
+      书中的数字与案例仅用于说明原理，不代表任何策略的未来表现。
+    </p>
+  </div>
+</div>
+</main>
+
+<button id="toTop" aria-label="回到顶部">
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M3.5 7.5L8 3l4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- syntax highlighting ---------------- */
+  const KW = "def|class|return|if|elif|else|for|while|in|not|and|or|import|from|as|with|try|except|finally|raise|lambda|yield|None|True|False|self|pass|break|continue|global|assert|async|await|print|is|del|nonlocal|match|case";
+  const RE = new RegExp(
+    "(#[^\\n]*)" +
+    "|(\"\"\"[\\s\\S]*?\"\"\"|'''[\\s\\S]*?'''|\"(?:\\\\.|[^\"\\\\\\n])*\"|'(?:\\\\.|[^'\\\\\\n])*')" +
+    "|(\\b(?:" + KW + ")\\b)" +
+    "|(\\b\\d[\\d_]*\\.?\\d*(?:[eE][+-]?\\d+)?\\b)" +
+    "|(@[A-Za-z_][\\w.]*)", "g");
+
+  function esc(s){
+    return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  }
+  function highlight(src){
+    let out = "", last = 0, m;
+    RE.lastIndex = 0;
+    while((m = RE.exec(src)) !== null){
+      out += esc(src.slice(last, m.index));
+      if(m[1]) out += '<span class="c-com">' + esc(m[1]) + '</span>';
+      else if(m[2]) out += '<span class="c-str">' + esc(m[2]) + '</span>';
+      else if(m[3]) out += '<span class="c-kw">' + esc(m[3]) + '</span>';
+      else if(m[4]) out += '<span class="c-num">' + esc(m[4]) + '</span>';
+      else if(m[5]) out += '<span class="c-dec">' + esc(m[5]) + '</span>';
+      last = m.index + m[0].length;
+    }
+    out += esc(src.slice(last));
+    return out;
+  }
+  document.querySelectorAll("pre code").forEach(function(el){
+    el.innerHTML = highlight(el.textContent);
+  });
+
+  /* ---------------- copy buttons ---------------- */
+  document.querySelectorAll(".copy-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      const code = btn.closest(".code-block").querySelector("pre code");
+      const text = code ? code.textContent : "";
+      const done = function(){
+        btn.textContent = "COPIED";
+        btn.classList.add("done");
+        setTimeout(function(){ btn.textContent = "COPY"; btn.classList.remove("done"); }, 1600);
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(done).catch(done);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try{ document.execCommand("copy"); }catch(e){}
+        document.body.removeChild(ta); done();
+      }
+    });
+  });
+
+  /* ---------------- progress + scrollspy ---------------- */
+  const progress = document.getElementById("progress");
+  const toTop = document.getElementById("toTop");
+  const links = Array.prototype.slice.call(document.querySelectorAll(".toc a"));
+  const sections = links.map(function(a){
+    return document.querySelector(a.getAttribute("href"));
+  }).filter(Boolean);
+
+  let ticking = false;
+  function onScroll(){
+    if(ticking) return;
+    ticking = true;
+    requestAnimationFrame(function(){
+      const h = document.documentElement.scrollHeight - window.innerHeight;
+      const y = window.scrollY || document.documentElement.scrollTop;
+      progress.style.width = (h > 0 ? Math.min(100, y / h * 100) : 0) + "%";
+      toTop.classList.toggle("show", y > 900);
+
+      let current = -1;
+      for(let i = 0; i < sections.length; i++){
+        if(sections[i].getBoundingClientRect().top <= 140) current = i;
+      }
+      links.forEach(function(a, i){ a.classList.toggle("active", i === current); });
+      ticking = false;
+    });
+  }
+  window.addEventListener("scroll", onScroll, {passive:true});
+  window.addEventListener("resize", onScroll);
+  onScroll();
+
+  toTop.addEventListener("click", function(){
+    window.scrollTo({top:0, behavior:"smooth"});
+  });
+
+  /* ---------------- mobile nav ---------------- */
+  const sidebar = document.getElementById("sidebar");
+  const navToggle = document.getElementById("navToggle");
+  navToggle.addEventListener("click", function(){
+    sidebar.classList.toggle("open");
+  });
+  document.querySelectorAll(".toc a").forEach(function(a){
+    a.addEventListener("click", function(){ sidebar.classList.remove("open"); });
+  });
+  document.addEventListener("click", function(e){
+    if(window.innerWidth <= 1024 && sidebar.classList.contains("open") &&
+       !sidebar.contains(e.target) && !navToggle.contains(e.target)){
+      sidebar.classList.remove("open");
+    }
+  });
+
+  /* ---------------- TOC search ---------------- */
+  const search = document.getElementById("tocSearch");
+  if(search){
+    const groups = $all(document, ".toc-group");
+    search.addEventListener("input", function(){
+      const q = search.value.trim().toLowerCase();
+      groups.forEach(function(g){
+        let visible = 0;
+        $all(g, "a").forEach(function(a){
+          const hit = !q || a.textContent.toLowerCase().indexOf(q) !== -1;
+          a.style.display = hit ? "" : "none";
+          if(hit) visible++;
+        });
+        g.style.display = visible ? "" : "none";
+      });
+    });
+    document.addEventListener("keydown", function(e){
+      const tag = (document.activeElement.tagName || "").toLowerCase();
+      if(e.key === "/" && tag !== "input" && tag !== "textarea"){
+        e.preventDefault(); search.focus();
+      }
+      if(e.key === "Escape" && document.activeElement === search){
+        search.value = ""; search.dispatchEvent(new Event("input")); search.blur();
+      }
+    });
+  }
+
+  /* ---------------- utils ---------------- */
+  function fmt(x, d){
+    if(!isFinite(x)) return "—";
+    return x.toFixed(d === undefined ? 2 : d);
+  }
+  function pct(x, d){ return fmt(x * 100, d === undefined ? 1 : d) + "%"; }
+  function $(root, sel){ return root.querySelector(sel); }
+  function $all(root, sel){ return Array.prototype.slice.call(root.querySelectorAll(sel)); }
+
+  function fitCanvas(canvas, h){
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || canvas.parentElement.clientWidth || 600;
+    canvas.width = Math.max(280, w) * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = Math.max(280, w) + "px";
+    canvas.style.height = h + "px";
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: Math.max(280, w), h: h };
+  }
+
+  /* ---------------- widget: expectancy ---------------- */
+  function initExpectancy(root){
+    const ins = {};
+    $all(root, "[data-in]").forEach(function(el){ ins[el.dataset.in] = el; });
+    const outs = {};
+    $all(root, "[data-out]").forEach(function(el){ outs[el.dataset.out] = el; });
+
+    function update(){
+      const p = +ins.p.value / 100;
+      const w = +ins.w.value;
+      const l = +ins.l.value;
+      const c = +ins.c.value;
+
+      outs.p.textContent = pct(p, 0);
+      outs.w.textContent = fmt(w, 1);
+      outs.l.textContent = fmt(l, 1);
+      outs.c.textContent = fmt(c, 2);
+
+      const e = p * w - (1 - p) * l;
+      const net = e - 2 * c;
+      const be = (l + 2 * c) / (w + l);
+      const per100 = net * 100;
+
+      outs.e.textContent = (e >= 0 ? "+" : "") + fmt(e, 2) + " R";
+      outs.e.className = "v " + (e >= 0 ? "good" : "bad");
+      outs.be.textContent = pct(be, 1);
+      outs.h.textContent = (per100 >= 0 ? "+" : "") + fmt(per100, 1) + " R";
+      outs.h.className = "v " + (per100 >= 0 ? "good" : "bad");
+      outs.net.textContent = (net >= 0 ? "+" : "") + fmt(net, 2) + " R";
+      outs.net.className = "v " + (net >= 0 ? "good" : "bad");
+
+      let msg;
+      if(net <= 0){
+        msg = "负期望。无论仓位多小、执行多好，长期都是亏损。唯一的出路是提高盈亏比或降低成本。";
+      } else if(net < 0.05){
+        msg = "薄利。成本几乎吃掉了全部优势，任何滑点估计误差都可能让它翻负。";
+      } else if(be > p){
+        msg = "当前胜率低于含成本的盈亏平衡点，这个参数组合实际是亏的。";
+      } else {
+        msg = "正期望。但期望值为正不等于能赚钱——还要看它兑现之前的回撤你能不能扛住。";
+      }
+      outs.verdict.textContent = msg;
+    }
+    $all(root, "input").forEach(function(el){ el.addEventListener("input", update); });
+    update();
+  }
+
+  /* ---------------- widget: kelly monte carlo ---------------- */
+  function initKelly(root){
+    const ins = {};
+    $all(root, "[data-in]").forEach(function(el){ ins[el.dataset.in] = el; });
+    const outs = {};
+    $all(root, "[data-out]").forEach(function(el){ outs[el.dataset.out] = el; });
+    const canvas = $(root, "[data-canvas]");
+
+    let state = null;
+
+    function simulate(){
+      const p = +ins.p.value / 100;
+      const b = +ins.b.value;
+      const f = +ins.f.value / 100;
+      const n = +ins.n.value;
+      const paths = 150;
+      const all = [];
+
+      for(let k = 0; k < paths; k++){
+        let w = 1;
+        const path = new Float64Array(n + 1);
+        path[0] = 1;
+        for(let i = 1; i <= n; i++){
+          w *= (Math.random() < p) ? (1 + f * b) : (1 - f);
+          if(w < 1e-6) w = 1e-6;
+          path[i] = w;
+        }
+        all.push(path);
+      }
+
+      // quantiles per step
+      const med = new Float64Array(n + 1);
+      const p05 = new Float64Array(n + 1);
+      const p95 = new Float64Array(n + 1);
+      const buf = new Float64Array(paths);
+      for(let i = 0; i <= n; i++){
+        for(let k = 0; k < paths; k++) buf[k] = all[k][i];
+        buf.sort();
+        p05[i] = buf[Math.floor(paths * 0.05)];
+        med[i] = buf[Math.floor(paths * 0.5)];
+        p95[i] = buf[Math.floor(paths * 0.95)];
+      }
+
+      let ruin = 0;
+      for(let k = 0; k < paths; k++){
+        let hit = false;
+        for(let i = 0; i <= n; i++){ if(all[k][i] < 0.2){ hit = true; break; } }
+        if(hit) ruin++;
+      }
+
+      state = {paths: all, med: med, p05: p05, p95: p95, n: n, ruin: ruin / paths};
+    }
+
+    function draw(){
+      if(!state) return;
+      const fit = fitCanvas(canvas, 300);
+      const ctx = fit.ctx, W = fit.w, H = fit.h;
+      const padL = 46, padR = 14, padT = 18, padB = 30;
+      const iw = W - padL - padR, ih = H - padT - padB;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // 动态纵轴范围：覆盖 5%~95% 分位，留 15% 余量
+      let top = 1, bot = 1;
+      for(let i = 0; i <= state.n; i++){
+        top = Math.max(top, state.p95[i]);
+        bot = Math.min(bot, state.p05[i]);
+      }
+      top = Math.max(top * 1.18, 1.6);
+      bot = Math.min(bot * 0.82, 0.9);
+      const lo = Math.log10(bot), hi = Math.log10(top);
+      function X(i){ return padL + iw * (i / state.n); }
+      function Y(v){
+        const t = (Math.log10(Math.max(v, bot)) - lo) / (hi - lo);
+        return padT + ih * (1 - Math.min(1, Math.max(0, t)));
+      }
+
+      // grid
+      const ticks = [0.05,0.1,0.2,0.5,1,2,5,10,20,50,100,200,500,1000].filter(function(v){
+        return v >= bot && v <= top;
+      });
+      ctx.strokeStyle = "#f0ece1"; ctx.lineWidth = 1;
+      ctx.fillStyle = "#a8aeb6";
+      ctx.font = "9.5px ui-monospace, monospace";
+      ticks.forEach(function(v){
+        const y = Y(v);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.fillText((v >= 1 ? v + "x" : v.toFixed(2) + "x"), 6, y + 3);
+      });
+      ctx.strokeStyle = "#d8d2c3";
+      ctx.beginPath(); ctx.moveTo(padL, Y(1)); ctx.lineTo(W - padR, Y(1)); ctx.stroke();
+
+      // paths
+      ctx.lineWidth = 0.7;
+      ctx.strokeStyle = "rgba(29,63,99,0.09)";
+      const step = Math.max(1, Math.floor(state.n / 100));
+      for(let k = 0; k < state.paths.length; k++){
+        const p = state.paths[k];
+        ctx.beginPath();
+        for(let i = 0; i <= state.n; i += step){
+          const x = X(i), y = Y(p[i]);
+          if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      // p05
+      ctx.strokeStyle = "#9c7418"; ctx.lineWidth = 1.6; ctx.setLineDash([4,3]);
+      ctx.beginPath();
+      for(let i = 0; i <= state.n; i++){ const x = X(i), y = Y(state.p05[i]); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // median
+      ctx.strokeStyle = "#b0512f"; ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      for(let i = 0; i <= state.n; i++){ const x = X(i), y = Y(state.med[i]); if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+      ctx.stroke();
+
+      // axis labels
+      ctx.fillStyle = "#79818b";
+      ctx.font = "9.5px ui-monospace, monospace";
+      ctx.fillText("0", padL - 3, H - 10);
+      ctx.fillText(state.n + " 笔", W - padR - 34, H - 10);
+
+      // legend
+      const lg = "中位数 " + state.med[state.n].toFixed(2) + "x";
+      ctx.font = "10px ui-monospace, monospace";
+      const tw = ctx.measureText(lg).width;
+      ctx.fillStyle = "rgba(253,251,246,0.92)";
+      ctx.fillRect(padL + 6, padT + 4, tw + 16, 18);
+      ctx.fillStyle = "#b0512f";
+      ctx.fillText(lg, padL + 14, padT + 17);
+    }
+
+    function update(){
+      const p = +ins.p.value / 100;
+      const b = +ins.b.value;
+      const f = +ins.f.value / 100;
+
+      outs.p.textContent = pct(p, 0);
+      outs.b.textContent = fmt(b, 1);
+      outs.f.textContent = pct(f, 0);
+      outs.n.textContent = ins.n.value;
+
+      const kelly = p - (1 - p) / b;
+      outs.kelly.textContent = kelly > 0 ? pct(kelly, 1) : "不参与";
+
+      simulate();
+      outs.ruin.textContent = pct(state.ruin, 1);
+      outs.ruin.className = "v " + (state.ruin > 0.2 ? "bad" : (state.ruin > 0.05 ? "" : "good"));
+
+      const ratio = kelly > 0 ? f / kelly : 99;
+      let msg;
+      if(kelly <= 0){
+        msg = "这个赌局没有优势（凯利值为负），任何正的下注比例都会导致长期亏损。";
+      } else if(ratio < 0.5){
+        msg = "保守区间。增长率略低于最优，但回撤小得多，适合参数不确定时使用。";
+      } else if(ratio < 1.25){
+        msg = "接近凯利最优。增长最快，但你要准备好承受深度回撤。";
+      } else if(ratio < 2){
+        msg = "已经超过最优仓位。长期增长率开始下降，回撤显著放大。";
+      } else {
+        msg = "危险区。下注比例超过 2f*，长期增长为负——每一笔都是正期望，但账户必然缩水。";
+      }
+      outs.knote.textContent = msg;
+      draw();
+    }
+
+    $all(root, "input").forEach(function(el){ el.addEventListener("input", update); });
+    window.addEventListener("resize", function(){ if(state) draw(); });
+    update();
+  }
+
+  /* ---------------- widget: metrics lab ---------------- */
+  function mulberry32(a){
+    return function(){
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  function initMetrics(root){
+    const ins = {};
+    $all(root, "[data-in]").forEach(function(el){ ins[el.dataset.in] = el; });
+    const outs = {};
+    $all(root, "[data-out]").forEach(function(el){ outs[el.dataset.out] = el; });
+    const canvas = $(root, "[data-canvas]");
+    let data = null;
+
+    function build(){
+      const mu = +ins.mu.value / 100;
+      const sig = +ins.sig.value / 100;
+      const years = +ins.yrs.value;
+      const n = Math.round(years * 252);
+      const rand = mulberry32(20261018);
+      const eq = new Float64Array(n + 1);
+      eq[0] = 1;
+      let v = 1;
+      for(let i = 1; i <= n; i++){
+        // Box-Muller
+        const u1 = Math.max(rand(), 1e-9), u2 = rand();
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        const r = mu / 252 + sig / Math.sqrt(252) * z;
+        v *= (1 + r);
+        eq[i] = v;
+      }
+      // drawdown
+      const dd = new Float64Array(n + 1);
+      let peak = eq[0];
+      let mdd = 0, curDur = 0, longest = 0;
+      for(let i = 0; i <= n; i++){
+        peak = Math.max(peak, eq[i]);
+        dd[i] = eq[i] / peak - 1;
+        mdd = Math.min(mdd, dd[i]);
+        curDur = dd[i] < -1e-9 ? curDur + 1 : 0;
+        longest = Math.max(longest, curDur);
+      }
+      const totalRet = eq[n] / eq[0];
+      const cagr = Math.pow(totalRet, 252 / n) - 1;
+
+      data = {eq: eq, dd: dd, n: n, mdd: mdd, cagr: cagr, sig: sig, mu: mu,
+              sharpe: (mu - sig * sig / 2) / sig, longest: longest};
+    }
+
+    function draw(){
+      if(!data) return;
+      const fit = fitCanvas(canvas, 320);
+      const ctx = fit.ctx, W = fit.w, H = fit.h;
+      const padL = 42, padR = 12;
+      const eqTop = 16, eqH = 186;
+      const ddTop = 236, ddH = 62;
+
+      ctx.clearRect(0, 0, W, H);
+
+      let lo = 1e9, hi = -1e9;
+      for(let i = 0; i <= data.n; i++){ lo = Math.min(lo, data.eq[i]); hi = Math.max(hi, data.eq[i]); }
+      const pad = (hi - lo) * 0.12 || 0.1;
+      lo -= pad; hi += pad;
+      const X = i => padL + (W - padL - padR) * (i / data.n);
+      const Y = v => eqTop + eqH * (1 - (v - lo) / (hi - lo));
+
+      // grid
+      ctx.strokeStyle = "#f2eee4"; ctx.lineWidth = 1;
+      ctx.fillStyle = "#a8aeb6"; ctx.font = "9.5px ui-monospace, monospace";
+      for(let g = 0; g <= 4; g++){
+        const val = lo + (hi - lo) * g / 4;
+        const y = Y(val);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.fillText(val.toFixed(2) + "x", 6, y + 3);
+      }
+
+      // equity area
+      const grad = ctx.createLinearGradient(0, eqTop, 0, eqTop + eqH);
+      grad.addColorStop(0, "rgba(29,63,99,0.13)");
+      grad.addColorStop(1, "rgba(29,63,99,0.01)");
+      ctx.beginPath();
+      ctx.moveTo(X(0), Y(data.eq[0]));
+      for(let i = 1; i <= data.n; i++) ctx.lineTo(X(i), Y(data.eq[i]));
+      ctx.lineTo(X(data.n), eqTop + eqH);
+      ctx.lineTo(X(0), eqTop + eqH);
+      ctx.closePath();
+      ctx.fillStyle = grad; ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(X(0), Y(data.eq[0]));
+      for(let i = 1; i <= data.n; i++) ctx.lineTo(X(i), Y(data.eq[i]));
+      ctx.strokeStyle = "#1d3f63"; ctx.lineWidth = 1.8; ctx.stroke();
+
+      // drawdown panel
+      ctx.strokeStyle = "#e7e2d6";
+      ctx.beginPath(); ctx.moveTo(padL, ddTop); ctx.lineTo(W - padR, ddTop); ctx.stroke();
+
+      const dMax = Math.min(-0.01, data.mdd * 1.15);
+      const DY = v => ddTop + ddH * (v / dMax);
+
+      ctx.beginPath();
+      ctx.moveTo(X(0), ddTop);
+      for(let i = 1; i <= data.n; i++) ctx.lineTo(X(i), DY(data.dd[i]));
+      ctx.lineTo(X(data.n), ddTop);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(176,81,47,0.16)"; ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(X(0), ddTop);
+      for(let i = 1; i <= data.n; i++) ctx.lineTo(X(i), DY(data.dd[i]));
+      ctx.strokeStyle = "#b0512f"; ctx.lineWidth = 1.3; ctx.stroke();
+
+      ctx.fillStyle = "#b0512f";
+      ctx.font = "9.5px ui-monospace, monospace";
+      ctx.fillText((data.mdd * 100).toFixed(1) + "%", 6, ddTop + ddH - 2);
+      ctx.fillStyle = "#a8aeb6";
+      ctx.fillText("回撤", 6, ddTop + 12);
+
+      ctx.fillStyle = "#79818b";
+      ctx.fillText("0", padL - 2, H - 8);
+      ctx.fillText((data.n / 252).toFixed(0) + " 年", W - padR - 26, H - 8);
+    }
+
+    function update(){
+      outs.mu.textContent = ins.mu.value + "%";
+      outs.sig.textContent = ins.sig.value + "%";
+      outs.yrs.textContent = ins.yrs.value;
+      build();
+
+      outs.sharpe.textContent = data.sharpe.toFixed(2);
+      outs.sharpe.className = "v " + (data.sharpe > 0.5 ? "good" : (data.sharpe < 0 ? "bad" : ""));
+      outs.mdd.textContent = (data.mdd * 100).toFixed(1) + "%";
+      outs.cagr.textContent = (data.cagr * 100).toFixed(1) + "%";
+      outs.dur.textContent = Math.round(data.longest / 21) + " 月";
+
+      const months = Math.round(data.longest / 21);
+      outs.mnote.textContent = months > 18
+        ? "在这段模拟里，你要连续忍受约 " + months + " 个月的浮亏才能创新高。多数人熬不到那一刻。"
+        : "这段模拟里最长水下期约 " + months + " 个月。回撤不只是深度，更是时间。";
+      draw();
+    }
+
+    $all(root, "input").forEach(function(el){ el.addEventListener("input", update); });
+    window.addEventListener("resize", function(){ if(data) draw(); });
+    update();
+  }
+
+  /* ---------------- widget: multiple testing ---------------- */
+  function initMultitest(root){
+    const ins = {};
+    $all(root, "[data-in]").forEach(function(el){ ins[el.dataset.in] = el; });
+    const outs = {};
+    $all(root, "[data-out]").forEach(function(el){ outs[el.dataset.out] = el; });
+    const canvas = $(root, "[data-canvas]");
+    let state = null;
+
+    function build(){
+      const N = +ins.n.value;
+      const T = +ins.y.value;
+      const sd = 1 / Math.sqrt(T);          // 零假设下夏普估计的标准误
+      const rand = mulberry32(777);
+      const vals = new Float64Array(N);
+      let best = -Infinity;
+      for(let i = 0; i < N; i++){
+        const u1 = Math.max(rand(), 1e-9), u2 = rand();
+        const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        vals[i] = z * sd;
+        if(vals[i] > best) best = vals[i];
+      }
+      state = {vals: vals, N: N, T: T, best: best, sd: sd};
+    }
+
+    function draw(){
+      if(!state) return;
+      const fit = fitCanvas(canvas, 290);
+      const ctx = fit.ctx, W = fit.w, H = fit.h;
+      const padL = 30, padR = 16, padT = 22, padB = 34;
+      const iw = W - padL - padR, ih = H - padT - padB;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const xmin = -3.4 * state.sd, xmax = Math.max(3.4 * state.sd, state.best + 0.6 * state.sd);
+      const bins = 30;
+      const counts = new Array(bins).fill(0);
+      for(let i = 0; i < state.N; i++){
+        const t = (state.vals[i] - xmin) / (xmax - xmin);
+        const b = Math.min(bins - 1, Math.max(0, Math.floor(t * bins)));
+        counts[b]++;
+      }
+      const maxC = Math.max.apply(null, counts);
+
+      const X = v => padL + iw * (v - xmin) / (xmax - xmin);
+      const bw = iw / bins;
+
+      for(let b = 0; b < bins; b++){
+        const h = ih * counts[b] / maxC;
+        const x = padL + b * bw;
+        const isTail = (xmin + (b + 0.5) * (xmax - xmin) / bins) > state.best - 1e-9;
+        ctx.fillStyle = isTail ? "#b0512f" : "#c3cedb";
+        ctx.fillRect(x + 0.8, padT + ih - h, Math.max(1, bw - 1.6), h);
+      }
+
+      // 理论密度曲线（零假设下的正态）
+      ctx.beginPath();
+      for(let px = 0; px <= iw; px += 2){
+        const v = xmin + (xmax - xmin) * px / iw;
+        const z = (v) / state.sd;
+        const dens = Math.exp(-0.5 * z * z) / (state.sd * Math.sqrt(2 * Math.PI));
+        const expectedCount = dens * (xmax - xmin) / bins * state.N;
+        const y = padT + ih - ih * Math.min(1.05, expectedCount / maxC);
+        if(px === 0) ctx.moveTo(padL + px, y); else ctx.lineTo(padL + px, y);
+      }
+      ctx.strokeStyle = "#1d3f63"; ctx.lineWidth = 1.4; ctx.stroke();
+
+      // zero line
+      ctx.strokeStyle = "#d8d2c3"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(X(0), padT); ctx.lineTo(X(0), padT + ih); ctx.stroke();
+      ctx.fillStyle = "#a8aeb6";
+      ctx.font = "9.5px ui-monospace, monospace";
+      ctx.fillText("0", X(0) - 3, H - 12);
+
+      // best marker
+      ctx.strokeStyle = "#b0512f"; ctx.lineWidth = 1.4; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.moveTo(X(state.best), padT - 4); ctx.lineTo(X(state.best), padT + ih); ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = "#b0512f";
+      ctx.font = "10px ui-monospace, monospace";
+      const label = "最好 " + state.best.toFixed(2);
+      const tw = ctx.measureText(label).width;
+      ctx.fillText(label, Math.min(X(state.best) + 6, W - tw - 4), padT - 8);
+
+      ctx.fillStyle = "#79818b";
+      ctx.font = "9.5px ui-monospace, monospace";
+      ctx.fillText("夏普比率估计值", padL, H - 12);
+      ctx.fillText("频数", 4, padT + 10);
+    }
+
+    function update(){
+      outs.n.textContent = ins.n.value;
+      outs.y.textContent = ins.y.value;
+      build();
+      outs.best.textContent = state.best.toFixed(2);
+      outs.truth.textContent = "0.00";
+      const expected = Math.sqrt(2 * Math.log(state.N)) / Math.sqrt(state.T);
+      outs.mtnote.textContent = "这些策略全部是纯随机的，没有任何真实优势。但 " +
+        state.N + " 个里最好的那个夏普达到 " + state.best.toFixed(2) +
+        "，理论期望约 " + expected.toFixed(2) + "。你看到的只是极值，不是能力。";
+      draw();
+    }
+
+    $all(root, "input").forEach(function(el){ el.addEventListener("input", update); });
+    window.addEventListener("resize", function(){ if(state) draw(); });
+    update();
+  }
+
+  /* ---------------- widget: almgren-chriss ---------------- */
+  function initAC(root){
+    const ins = {};
+    $all(root, "[data-in]").forEach(function(el){ ins[el.dataset.in] = el; });
+    const outs = {};
+    $all(root, "[data-out]").forEach(function(el){ outs[el.dataset.out] = el; });
+    const canvas = $(root, "[data-canvas]");
+    const ETA = 0.02;
+    let state = null;
+
+    function build(){
+      const v = +ins.lam.value / 100;
+      const T = +ins.hor.value;
+      const sigma = +ins.sig.value / 1000;
+      const lam = v * v * 8;                       // 归一化的风险厌恶
+      const kappa = Math.sqrt(lam * sigma * sigma / ETA);
+
+      const ac = new Float64Array(T + 1);
+      const twap = new Float64Array(T + 1);
+      for(let t = 0; t <= T; t++){
+        twap[t] = 1 - t / T;
+        ac[t] = kappa < 1e-9
+          ? 1 - t / T
+          : Math.sinh(kappa * (T - t)) / Math.sinh(kappa * T);
+      }
+
+      function stats(path){
+        let sumQ2 = 0, sumX2 = 0;
+        for(let t = 0; t < T; t++){
+          const q = path[t] - path[t + 1];
+          sumQ2 += q * q;
+        }
+        for(let t = 0; t <= T; t++) sumX2 += path[t] * path[t];
+        return {
+          impact: ETA * sumQ2 * 1e4,              // bps
+          risk: sigma * Math.sqrt(sumX2 / (T + 1)) * 1e4
+        };
+      }
+
+      state = {ac: ac, twap: twap, T: T, kappa: kappa, lam: lam,
+               a: stats(ac), w: stats(twap)};
+    }
+
+    function draw(){
+      if(!state) return;
+      const fit = fitCanvas(canvas, 300);
+      const ctx = fit.ctx, W = fit.w, H = fit.h;
+      const padL = 46, padR = 16, padT = 20, padB = 34;
+      const iw = W - padL - padR, ih = H - padT - padB;
+
+      ctx.clearRect(0, 0, W, H);
+
+      const X = t => padL + iw * t / state.T;
+      const Y = v => padT + ih * (1 - v);
+
+      // grid
+      ctx.strokeStyle = "#f2eee4"; ctx.lineWidth = 1;
+      ctx.fillStyle = "#a8aeb6"; ctx.font = "9.5px ui-monospace, monospace";
+      [0, 0.25, 0.5, 0.75, 1].forEach(function(g){
+        const y = Y(g);
+        ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+        ctx.fillText((g * 100) + "%", 8, y + 3);
+      });
+
+      // AC area
+      ctx.beginPath();
+      ctx.moveTo(X(0), Y(state.ac[0]));
+      for(let t = 1; t <= state.T; t++) ctx.lineTo(X(t), Y(state.ac[t]));
+      ctx.lineTo(X(state.T), Y(0));
+      ctx.lineTo(X(0), Y(0));
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, padT, 0, padT + ih);
+      grad.addColorStop(0, "rgba(176,81,47,0.14)");
+      grad.addColorStop(1, "rgba(176,81,47,0.01)");
+      ctx.fillStyle = grad; ctx.fill();
+
+      // TWAP dashed
+      ctx.beginPath();
+      ctx.moveTo(X(0), Y(state.twap[0]));
+      for(let t = 1; t <= state.T; t++) ctx.lineTo(X(t), Y(state.twap[t]));
+      ctx.strokeStyle = "#9aa6b4"; ctx.lineWidth = 1.4; ctx.setLineDash([5, 4]); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // AC solid
+      ctx.beginPath();
+      ctx.moveTo(X(0), Y(state.ac[0]));
+      for(let t = 1; t <= state.T; t++) ctx.lineTo(X(t), Y(state.ac[t]));
+      ctx.strokeStyle = "#b0512f"; ctx.lineWidth = 2.2; ctx.stroke();
+
+      // labels
+      ctx.fillStyle = "#79818b";
+      ctx.font = "9.5px ui-monospace, monospace";
+      ctx.fillText("0", padL - 3, H - 12);
+      ctx.fillText(state.T + " 步", W - padR - 26, H - 12);
+      ctx.fillStyle = "#b0512f";
+      ctx.fillText("最优轨迹", W - padR - 92, padT + 14);
+      ctx.fillStyle = "#8b94a0";
+      ctx.fillText("TWAP", W - padR - 32, padT + 14);
+    }
+
+    function update(){
+      const v = +ins.lam.value / 100;
+      const T = +ins.hor.value;
+      const sigma = +ins.sig.value / 1000;
+
+      outs.hor.textContent = T;
+      outs.sig.textContent = (sigma * 100).toFixed(1) + "%";
+
+      build();
+
+      outs.lam.textContent = state.lam.toFixed(2);
+      outs.kappa.textContent = state.kappa.toFixed(3);
+      outs.impact.textContent = state.a.impact.toFixed(1) + " bps";
+      outs.risk.textContent = state.a.risk.toFixed(1) + " bps";
+      outs.half.textContent = state.kappa < 1e-6 ? "—" : (Math.log(2) / state.kappa).toFixed(1) + " 步";
+
+      let msg;
+      if(v < 0.02){
+        msg = "λ ≈ 0：你只关心冲击成本，最优解退化为 TWAP——均匀切片。代价是长时间暴露在价格漂移下。";
+      } else if(v < 0.45){
+        msg = "中等风险厌恶：轨迹前快后慢，把大部分风险提前释放，同时避免一次性砸盘。";
+      } else {
+        msg = "高风险厌恶：几乎立刻成交。你愿意为确定性支付高额冲击，这是「必须马上建仓」时的选择。";
+      }
+      outs.acnote.textContent = msg + "（冲击 " + state.a.impact.toFixed(0) +
+        " bps，TWAP 为 " + state.w.impact.toFixed(0) + " bps）";
+      draw();
+    }
+
+    $all(root, "input").forEach(function(el){ el.addEventListener("input", update); });
+    window.addEventListener("resize", function(){ if(state) draw(); });
+    update();
+  }
+
+  /* ---------------- boot widgets ---------------- */
+  document.querySelectorAll("[data-widget]").forEach(function(root){
+    const type = root.dataset.widget;
+    try{
+      if(type === "expectancy") initExpectancy(root);
+      else if(type === "kelly") initKelly(root);
+      else if(type === "metrics") initMetrics(root);
+      else if(type === "multitest") initMultitest(root);
+      else if(type === "ac") initAC(root);
+    }catch(err){ console.error("widget error", type, err); }
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,386 @@
+<section class="chapter" id="ch5">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 05 · 第二部 研究</div>
+    <h1 class="ch-title">统计学工具箱<br>为量化定制</h1>
+    <p class="ch-abs">
+      金融市场是一台专门生产「假规律」的机器。随机波动会长得像趋势，
+      噪声会长得像信号，而你恰好会在看到它的那一刻相信它。
+      这一章给你三件武器：样本量的直觉、假设检验的正确用法、以及对付多重检验的纪律。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>36 分钟</b></span>
+      <span>难度 <b>中级</b></span>
+      <span>代码 <b>Bootstrap / 置换检验</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    先做一个思想实验。让 1000 个人各自抛 10 次硬币，总会有几个人连续抛出 10 个正面。
+    如果你只采访这几个人，你会得出「有人天生擅长抛正面」的结论，还会想拜他为师。
+    金融市场每天都在生产这样的人——他们叫「去年的冠军基金」。
+  </p>
+
+  <p>
+    统计学的全部意义，就是让你在这种情况下保持清醒。它不告诉你「什么是对的」，
+    它告诉你「这个结果有多可能只是运气」。
+  </p>
+
+  <h2><span class="h2-n">5.1</span>大数定律，和小数定律</h2>
+
+  <p>
+    大数定律说：样本量足够大时，样本均值会收敛到真实期望。
+    它的潜台词是：<strong>「足够大」比你想的大得多</strong>。
+  </p>
+
+  <p>
+    假设一个策略真实胜率 52%，你想通过观察来确认它大于 50%。需要多少笔交易？
+    用标准误公式 <span class="eq-inline">SE = √(p(1−p)/n)</span>，要让 2% 的优势达到 2 倍标准误：
+  </p>
+
+  <div class="math">
+    n ≈ p(1−p) / (0.01)² ≈ 0.25 / 0.0001 = 2,500 笔
+    <span class="eq-n">(5.1)</span>
+  </div>
+
+  <p>
+    2500 笔。如果你的策略每天交易一次，需要十年。这就是为什么「三个月实盘验证」毫无意义——
+    它连噪声都还没走完一个周期。
+  </p>
+
+  <p>
+    更麻烦的是，人对随机性的直觉是反的。我们会在 20 次里看到 14 次盈利，就认为「找到了规律」，
+    这叫<strong>小数定律</strong>：错误地认为小样本也应该反映总体特征。
+    赌徒谬误、热手效应、以及大部分技术指标的诞生，都源于这个错误。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">一个粗糙但好用的估算</div>
+    <p>
+      评价一个日频策略，<strong>至少需要 3–5 年的日频数据</strong>（约 750–1250 个观测），
+      才能让夏普比率的标准误降到可接受的范围。少于这个量，你看到的差异大部分是噪声。
+      公式：<span class="eq-inline">SE(Sharpe) ≈ √((1 + SR²/2) / T)</span>，T 为年数。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">5.2</span>假设检验：p 值到底在说什么</h2>
+
+  <p>
+    假设检验的逻辑是反证法：先假设「没有效果」（原假设 H₀），然后看观测到的数据
+    在这个假设下有多不可能。如果太不可能，就拒绝 H₀。
+  </p>
+
+  <div class="math">
+    t = (x̄ − μ₀) / (s / √n)
+    <span class="eq-n">(5.2)</span>
+  </div>
+
+  <p>
+    p 值的定义是：<strong>在原假设为真的前提下，观测到当前结果或更极端结果的概率</strong>。
+    注意它<em>不是</em>「原假设为真的概率」，也<em>不是</em>「策略有效的概率」。
+    这个区别被误解了一百年，包括很多博士。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">p &lt; 0.05 不意味着什么</div>
+    <p>
+      它不意味着策略有效，不意味着可复现，不意味着经济意义显著。
+      它只意味着：如果真实收益是 0，你观测到这么高收益的概率小于 5%。
+      而在你试了 100 个策略之后，<strong>出现至少一个 p &lt; 0.05 的概率是 99.4%</strong>。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">5.3</span>多重检验：量化研究最大的陷阱</h2>
+
+  <p>
+    这是本章最重要的一节。假设你完全不懂交易，只是随机生成 1000 个策略，
+    每个策略都在同一段历史上回测。因为随机性，其中必然有一些看起来非常棒。
+    如果你挑出最好的那个，你会得到一条年化 30%、夏普 2 的曲线——而它背后的真实 alpha 是零。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 250" role="img" aria-label="多重检验下的最优策略分布">
+        <line x1="60" y1="200" x2="620" y2="200" stroke="#d8d2c3"/>
+        <!-- histogram of null sharpes -->
+        <g fill="#c9d3df">
+          <rect x="120" y="170" width="18" height="30"/><rect x="142" y="150" width="18" height="50"/>
+          <rect x="164" y="120" width="18" height="80"/><rect x="186" y="86" width="18" height="114"/>
+          <rect x="208" y="60" width="18" height="140"/><rect x="230" y="44" width="18" height="156"/>
+          <rect x="252" y="52" width="18" height="148"/><rect x="274" y="76" width="18" height="124"/>
+          <rect x="296" y="108" width="18" height="92"/><rect x="318" y="140" width="18" height="60"/>
+          <rect x="340" y="164" width="18" height="36"/><rect x="362" y="182" width="18" height="18"/>
+        </g>
+        <!-- tail -->
+        <g fill="#e8b9a6">
+          <rect x="384" y="190" width="18" height="10"/><rect x="406" y="194" width="18" height="6"/>
+        </g>
+        <!-- max marker -->
+        <line x1="415" y1="60" x2="415" y2="200" stroke="#b0512f" stroke-width="1.5" stroke-dasharray="4 3"/>
+        <circle cx="415" cy="193" r="4" fill="#b0512f"/>
+        <text x="352" y="46" font-family="monospace" font-size="10" fill="#b0512f">被选中的「冠军」</text>
+        <text x="60" y="220" font-family="monospace" font-size="9.5" fill="#a8aeb6">夏普 = 0</text>
+        <text x="560" y="220" font-family="monospace" font-size="9.5" fill="#a8aeb6">夏普 →</text>
+        <text x="180" y="30" font-family="sans-serif" font-size="11.5" fill="#454d57">1000 个纯随机策略的夏普分布</text>
+      </svg>
+    </div>
+    <figcaption><b>图 5-1</b>　零 alpha 的策略，其夏普估计值本身就是一个随机变量。试得足够多，最大值必然很漂亮——这叫「选择偏差」，不是「发现」。</figcaption>
+  </figure>
+
+  <p>
+    有三种应对方法，从松到严：
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:140px;">方法</th><th>做法</th><th>代价</th></tr></thead>
+      <tbody>
+        <tr><td><b>Bonferroni</b></td><td>把显著性阈值除以试验次数：α/N</td><td>过于保守，会漏掉真实信号</td></tr>
+        <tr><td><b>FDR 控制</b></td><td>控制「假阳性占所有阳性」的比例</td><td>需要更多假设，解释复杂</td></tr>
+        <tr><td><b>Deflated Sharpe</b></td><td>根据试验次数、样本长度、收益偏度峰度，调整夏普的显著性</td><td>需要记录你试过多少次（很多人不愿记）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box idea">
+    <div class="box-label">最重要的纪律</div>
+    <p>
+      <strong>记录你试过的每一个策略。</strong>不是记录成功的，是记录所有的。
+      一个研究日志，包含日期、假设、参数、样本内外结果。
+      当你发现「我试了 47 个变体」时，你对第 48 个的夏普 1.8 就不会那么兴奋了。
+    </p>
+  </div>
+
+  <div class="widget" data-widget="multitest">
+    <div class="widget-head">
+      <span class="widget-title">实验 5-1 · 多重检验实验室</span>
+      <span class="widget-tag">SELECTION BIAS</span>
+    </div>
+    <div class="widget-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label>你试了多少个策略 <span class="val" data-out="n">200</span></label>
+          <input type="range" data-in="n" min="10" max="600" value="200" step="10">
+        </div>
+        <div class="ctrl">
+          <label>每个策略的回测年数 <span class="val" data-out="y">5</span></label>
+          <input type="range" data-in="y" min="1" max="10" value="5" step="1">
+        </div>
+        <div class="readouts" style="grid-template-columns:1fr 1fr;">
+          <div class="readout"><div class="k">最好的夏普</div><div class="v bad" data-out="best">—</div></div>
+          <div class="readout"><div class="k">真实 alpha</div><div class="v" data-out="truth">0.00</div></div>
+        </div>
+        <div class="widget-note" data-out="mtnote">这些策略全部是纯随机的，没有任何真实优势。</div>
+      </div>
+      <div>
+        <canvas data-canvas="multitest" width="600" height="290"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    把「试了多少个」拉到 600，你会看到最好的夏普轻松超过 1.5。这不是你的能力，
+    这是极值分布的性质。理解这一点，你就不会再被「回测冠军」打动。
+  </p>
+
+  <h2><span class="h2-n">5.4</span>Bootstrap：不假设分布的置信区间</h2>
+
+  <p>
+    传统 t 检验假设收益服从正态分布。但我们已经知道它有厚尾。
+    Bootstrap 提供了一种不依赖分布假设的方法：<strong>有放回地重采样</strong>。
+  </p>
+
+  <p>
+    做法极其简单：从你的 N 个日收益里，随机抽 N 个（允许重复），算一次夏普；
+    重复 1000 次，得到夏普的分布；取 2.5% 和 97.5% 分位数，就是 95% 置信区间。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>bootstrap.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+
+def bootstrap_ci(x, stat, n_boot=2000, alpha=0.05, seed=0):
+    """对任意统计量做 bootstrap 置信区间。"""
+    rng = np.random.default_rng(seed)
+    x = np.asarray(x)
+    n = len(x)
+    stats = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = rng.integers(0, n, n)
+        stats[i] = stat(x[idx])
+    lo, hi = np.quantile(stats, [alpha / 2, 1 - alpha / 2])
+    return stat(x), lo, hi
+
+
+def sharpe(x):
+    sd = x.std(ddof=1)
+    return np.nan if sd == 0 else x.mean() / sd * np.sqrt(252)
+
+
+# 用法
+# point, lo, hi = bootstrap_ci(returns.values, sharpe)
+# print(f"Sharpe {point:.2f}  95% CI [{lo:.2f}, {hi:.2f}]")</code></pre>
+  </div>
+
+  <p>
+    如果你的置信区间是 <span class="eq-inline">[−0.3, 2.1]</span>，那么「策略有效」这个结论
+    就非常脆弱——它和「没有效果」在统计上无法区分。很多研究报告只给点估计，
+    不给区间，这等于隐藏了不确定性。
+  </p>
+
+  <h3>Block Bootstrap</h3>
+
+  <p>
+    普通 bootstrap 假设每个观测独立。但收益有自相关（波动聚集、动量），
+    独立重采样会破坏这个结构，低估不确定性。解决办法是<strong>按块重采样</strong>：
+    每次抽取连续的一段（比如 20 天），而不是单日。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>block_bootstrap.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>def block_bootstrap_ci(x, stat, block=20, n_boot=2000, alpha=0.05, seed=0):
+    rng = np.random.default_rng(seed)
+    x = np.asarray(x)
+    n = len(x)
+    n_blocks = int(np.ceil(n / block))
+    out = np.empty(n_boot)
+    for i in range(n_boot):
+        starts = rng.integers(0, n - block, n_blocks)
+        sample = np.concatenate([x[s:s + block] for s in starts])[:n]
+        out[i] = stat(sample)
+    return stat(x), *np.quantile(out, [alpha / 2, 1 - alpha / 2])</code></pre>
+  </div>
+
+  <h2><span class="h2-n">5.5</span>置换检验：最诚实的「这会不会是运气」</h2>
+
+  <p>
+    如果你想知道「我的择时能力是真的，还是运气」，最直接的办法是：
+    <strong>把信号和收益的对应关系随机打乱</strong>，看会发生什么。
+  </p>
+
+  <p>
+    具体做法：保持收益序列不变，随机重排信号（或日期），重跑策略 1000 次，
+    得到「无预测能力」情况下的收益分布。如果你的真实收益落在这个分布的 99% 分位之外，
+    才有资格说「这可能不是运气」。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>permutation.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+
+def permutation_test(signal, forward_ret, n_perm=2000, seed=0):
+    """检验信号与未来收益的关系是否显著。
+    signal: 每日信号（-1 ~ 1）
+    forward_ret: 次日收益
+    """
+    rng = np.random.default_rng(seed)
+    signal = np.asarray(signal)
+    forward_ret = np.asarray(forward_ret)
+
+    real = np.corrcoef(signal, forward_ret)[0, 1]
+    null = np.empty(n_perm)
+    for i in range(n_perm):
+        null[i] = np.corrcoef(rng.permutation(signal), forward_ret)[0, 1]
+
+    p = (np.sum(np.abs(null) &gt;= abs(real)) + 1) / (n_perm + 1)
+    return real, p, null</code></pre>
+  </div>
+
+  <p>
+    这个检验的妙处在于：它不假设任何分布，直接回答「在完全没有预测能力的世界里，
+    我看到的这个相关性有多常见」。它比 t 检验更稳健，也更难被自欺欺人。
+  </p>
+
+  <h2><span class="h2-n">5.6</span>平稳性：金融时间序列的麻烦</h2>
+
+  <p>
+    大部分统计方法都假设数据是<strong>平稳的</strong>：均值和方差不随时间变化。
+    但价格显然不平稳（长期上涨），波动率也不平稳（聚集），连相关性都不平稳（危机时一起跌）。
+  </p>
+
+  <p>
+    实践中的处理方式：
+  </p>
+
+  <ul>
+    <li><strong>用收益率，不用价格。</strong>收益率比价格更接近平稳。</li>
+    <li><strong>用滚动窗口或扩展窗口。</strong>承认参数会变，定期重估。</li>
+    <li><strong>做差分。</strong>如果序列有单位根，差分后再建模。</li>
+    <li><strong>不要外推太远。</strong>任何模型的预测能力都随时间衰减。</li>
+  </ul>
+
+  <div class="box note">
+    <div class="box-label">一个实用检验</div>
+    <p>
+      ADF 检验（Augmented Dickey-Fuller）用来判断序列是否有单位根。
+      在 Python 里用 <code>statsmodels.tsa.stattools.adfuller</code>。
+      但要注意：<strong>通过了 ADF 检验不等于平稳</strong>，只说明「没有单位根」。
+      结构突变（比如 2020 年 3 月）会让所有历史检验失效。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">5.7</span>回归：几何直觉与 R² 的欺骗性</h2>
+
+  <p>
+    线性回归在几何上就是<strong>把 y 投影到 X 张成的空间上</strong>。
+    残差是投影的垂线，所以残差和 X 正交。这个视角比公式更有用：
+    它告诉你 OLS 找到的是「在 X 能解释的方向上，最接近 y 的那个点」。
+  </p>
+
+  <div class="math">
+    β̂ = (XᵀX)<sup>−1</sup>Xᵀy &nbsp;&nbsp;&nbsp; R² = 1 − SS<sub>res</sub>/SS<sub>tot</sub>
+    <span class="eq-n">(5.3)</span>
+  </div>
+
+  <p>
+    R² 表示「y 的方差中被 X 解释的比例」。它在量化里经常被误读：
+  </p>
+
+  <ul>
+    <li>R² = 0.02 在预测股票收益时可能已经很有价值（因为信噪比极低）。</li>
+    <li>R² 高不代表因果，也不代表能赚钱（可能只是同期相关）。</li>
+    <li>加入更多变量，R² 一定上升，哪怕变量是噪声。所以要看调整 R² 或样本外 R²。</li>
+  </ul>
+
+  <div class="box warn">
+    <div class="box-label">伪回归</div>
+    <p>
+      两个都有趋势的时间序列做回归，会得到极高的 R² 和显著的 t 值，
+      但两者可能毫无关系（比如「中国 GDP」和「美国人口」）。
+      这叫伪回归（spurious regression）。解决办法：差分、加协整检验、或者用收益率而非价格。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">5.8</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用 3 个月的数据判断策略有效。</li>
+    <li>把 p &lt; 0.05 当成「策略有效」。</li>
+    <li>试了 50 个变体，只报告最好的那个。</li>
+    <li>用普通 bootstrap 处理有自相关的收益序列。</li>
+    <li>对价格做回归而不做差分。</li>
+    <li>用 R² 高低判断因子好坏。</li>
+    <li>忽略样本外检验，或者样本外只留了最后 10%。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>bootstrap_ci</code> 计算一个真实策略夏普的 95% 置信区间。它跨过 0 了吗？</li>
+      <li>生成 500 个纯随机策略（零 alpha），记录最大夏普。改变回测年数，观察最大夏普如何变化，验证 <span class="eq-inline">√(2 ln N / T)</span> 这个近似。</li>
+      <li>对一个你相信的因子做置换检验，看 p 值是多少。</li>
+      <li>构造两个有趋势但无关的序列，做回归，观察 R² 有多高。然后差分后再回归。</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>确认 2% 的胜率优势需要约 2500 笔交易；短期实盘验证没有统计意义。</li>
+      <li>p 值是「H₀ 为真时观测到该结果的概率」，不是「策略有效的概率」。</li>
+      <li>多重检验必然产生假冠军；记录试验次数，使用 Deflated Sharpe 或 FDR。</li>
+      <li>Bootstrap 给出不依赖分布假设的置信区间；有自相关时用 Block Bootstrap。</li>
+      <li>置换检验直接回答「这会不会是运气」，是最诚实的检验之一。</li>
+      <li>金融序列不平稳；用收益率、滚动窗口、差分来逼近平稳。</li>
+    </ul>
+  </div>
+</section>

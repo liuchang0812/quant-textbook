@@ -1,0 +1,521 @@
+<section class="chapter" id="ch8">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 08 · 第三部 工程</div>
+    <h1 class="ch-title">回测<br>一台诚实的谎言机器</h1>
+    <p class="ch-abs">
+      回测的唯一目的是证伪，不是证明。它的价值不在于告诉你「这个策略能赚多少」，
+      而在于告诉你「在什么条件下它会亏、亏多少、以及我的假设有多脆弱」。
+      这一章拆解回测里所有的作弊点，并给你一台尽量诚实的引擎。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>46 分钟</b></span>
+      <span>难度 <b>进阶</b></span>
+      <span>代码 <b>完整回测器</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    有一个残酷的统计事实：<strong>只要你试的次数够多，任何随机策略都能回测出夏普 2</strong>。
+    回测框架不会阻止你，它会热情地配合你——你调一个参数，它给你一条更漂亮的曲线；
+    你再调一个，它更好。这个过程有强烈的多巴胺反馈，和打游戏升级一模一样。
+  </p>
+
+  <p>
+    所以一个成熟的量化研究者，对回测的态度是<strong>敌意</strong>的。他不是在问
+    「怎么让它更好看」，而是在问「我怎么才能证明它是假的」。这一章教你怎么当一个合格的敌人。
+  </p>
+
+  <h2><span class="h2-n">8.1</span>回测的完整链条</h2>
+
+  <p>
+    一个诚实的回测，必须显式地走完这条链。任何一环被跳过，结果就不可信。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 188" role="img" aria-label="回测流水线">
+        <defs>
+          <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#a8aeb6"/>
+          </marker>
+        </defs>
+
+        <g font-family="sans-serif" font-size="10.5" text-anchor="middle">
+          <!-- boxes -->
+          <rect x="8" y="60" width="92" height="52" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="54" y="82" fill="#1b2027">数据</text>
+          <text x="54" y="98" fill="#79818b" font-size="9">清洗 / 对齐</text>
+
+          <rect x="122" y="60" width="92" height="52" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="168" y="82" fill="#1b2027">信号</text>
+          <text x="168" y="98" fill="#79818b" font-size="9">t 日收盘计算</text>
+
+          <rect x="236" y="60" width="92" height="52" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="282" y="82" fill="#1b2027">目标仓位</text>
+          <text x="282" y="98" fill="#79818b" font-size="9">风控约束后</text>
+
+          <rect x="350" y="60" width="92" height="52" rx="6" fill="#fdf6f1" stroke="#e0bda9"/>
+          <text x="396" y="82" fill="#b0512f">订单</text>
+          <text x="396" y="98" fill="#a97a63" font-size="9">数量 / 价格</text>
+
+          <rect x="464" y="60" width="92" height="52" rx="6" fill="#fdf6f1" stroke="#e0bda9"/>
+          <text x="510" y="82" fill="#b0512f">成交</text>
+          <text x="510" y="98" fill="#a97a63" font-size="9">t+1 开盘 / 滑点</text>
+
+          <rect x="578" y="60" width="74" height="52" rx="6" fill="#f5faf7" stroke="#b9d3c2"/>
+          <text x="615" y="82" fill="#2b6a4d">净值</text>
+          <text x="615" y="98" fill="#6b8f7c" font-size="9">盯市</text>
+
+          <!-- arrows -->
+          <g stroke="#a8aeb6" stroke-width="1.2" marker-end="url(#ar)">
+            <line x1="100" y1="86" x2="118" y2="86"/>
+            <line x1="214" y1="86" x2="232" y2="86"/>
+            <line x1="328" y1="86" x2="346" y2="86"/>
+            <line x1="442" y1="86" x2="460" y2="86"/>
+            <line x1="556" y1="86" x2="574" y2="86"/>
+          </g>
+        </g>
+
+        <!-- feedback loop -->
+        <path d="M615 116 L615 150 L54 150 L54 118" fill="none" stroke="#b0512f" stroke-width="1.1" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+        <text x="330" y="168" font-family="sans-serif" font-size="10" fill="#b0512f" text-anchor="middle">每一天重复：昨天的净值 → 今天的仓位</text>
+
+        <text x="330" y="40" font-family="monospace" font-size="10" fill="#a8aeb6" text-anchor="middle" letter-spacing="1.5">BACKTEST PIPELINE</text>
+
+        <!-- cost annotations -->
+        <text x="396" y="132" font-family="sans-serif" font-size="9.5" fill="#b0512f" text-anchor="middle">↑ 成本在这里发生</text>
+      </svg>
+    </div>
+    <figcaption><b>图 8-1</b>　回测的六段链条。绝大多数「回测很好、实盘很惨」的问题，出在「信号 → 订单」和「订单 → 成交」这两段被简化成了「按收盘价全仓成交」。</figcaption>
+  </figure>
+
+  <h2><span class="h2-n">8.2</span>向量化 vs 事件驱动</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:120px;">方式</th><th>做法</th><th>速度</th><th>真实性</th><th>适用</th></tr></thead>
+      <tbody>
+        <tr><td><b>向量化</b></td><td>用 pandas/numpy 一次性算完所有日期</td><td>极快</td><td>低（难以建模成本与约束）</td><td>因子研究、快速筛选</td></tr>
+        <tr><td><b>事件驱动</b></td><td>逐日/逐笔循环，模拟订单生命周期</td><td>慢 10–100 倍</td><td>高</td><td>最终验证、实盘前</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    正确的工作流是：<strong>用向量化做研究，用事件驱动做验证</strong>。
+    向量化帮你快速排除 95% 的坏想法；事件驱动帮你确认剩下的 5% 里，
+    有多少是被成本杀死的。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">向量化最大的坑</div>
+    <p>
+      <code>df["signal"].shift(1)</code> 看起来解决了前视问题，但如果你在计算 signal 时
+      用了 <code>df["close"].rolling(20).mean()</code>，这个均值包含了当天收盘价——
+      而你在当天收盘时是拿不到「收盘价」的（你要等到收盘那一刻）。
+      正确做法是 <code>rolling(20).mean().shift(1)</code>，或者明确约定「收盘后计算，次日开盘执行」。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">8.3</span>前视偏差的十种变体</h2>
+
+  <p>
+    我把常见的都列出来，建议做成 checklist，每次回测前过一遍。
+  </p>
+
+  <ol>
+    <li><strong>用当日收盘价成交</strong>，而信号也用了当日收盘价。</li>
+    <li><strong>用未来数据做标准化</strong>（全样本均值/方差）。</li>
+    <li><strong>财报用报告期而非公布日</strong>。</li>
+    <li><strong>用当前成分股</strong>回测历史。</li>
+    <li><strong>用「今天是否 ST/退市」</strong>过滤历史样本。</li>
+    <li><strong>参数在全样本上优化</strong>，然后报告全样本结果。</li>
+    <li><strong>用未来的行业分类</strong>（公司后来改行了）。</li>
+    <li><strong>用调整后的复权价挂单</strong>（价格现实中不存在）。</li>
+    <li><strong>用「最高价/最低价」判断止盈止损顺序</strong>（不知道先后）。</li>
+    <li><strong>在信号里用了当天收盘后才公布的公告</strong>。</li>
+  </ol>
+
+  <div class="box idea">
+    <div class="box-label">最快的检测方法</div>
+    <p>
+      把价格序列的日期随机打乱，重跑策略。如果还能赚钱，说明你的信号里有泄漏。
+      另一个方法：把策略的收益和「未来 1 日收益」做相关，如果相关性异常高（&gt; 0.3），
+      几乎可以确定有前视。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">8.4</span>成本建模：从「零成本」到「够真实」</h2>
+
+  <p>
+    成本模型不需要完美，但必须<strong>存在</strong>，并且<strong>保守</strong>。一个常用的分解：
+  </p>
+
+  <div class="math">
+    总成本 = 佣金 + 税费 + 半价差 + 冲击 + 滑点
+    <span class="eq-n">(8.1)</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>成本项</th><th>典型值（A 股）</th><th>建模方式</th></tr></thead>
+      <tbody>
+        <tr><td>佣金</td><td>0.01%–0.03%（双边）</td><td>按成交额比例</td></tr>
+        <tr><td>印花税</td><td>0.05%（仅卖出）</td><td>按卖出额比例</td></tr>
+        <tr><td>过户费</td><td>0.001%（双边）</td><td>按成交额比例</td></tr>
+        <tr><td>半价差</td><td>1–10 bps</td><td>按标的流动性分层</td></tr>
+        <tr><td>冲击成本</td><td>与订单量/成交量相关</td><td>平方根模型（见第十章）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    一个偷懒但有效的做法：<strong>先假设单边成本 20bps，跑一遍</strong>。
+    如果策略还能活，再细化模型；如果直接死了，说明它本来就很脆弱，不值得投入更多时间。
+  </p>
+
+  <h2><span class="h2-n">8.5</span>成交假设：最容易被忽略的一段</h2>
+
+  <p>
+    「信号说买，回测就按收盘价买到了」——这是回测里最大的谎言。真实的成交需要回答：
+  </p>
+
+  <ul>
+    <li><strong>什么时候下单？</strong>收盘后？次日开盘？开盘后 30 分钟？</li>
+    <li><strong>用什么价格？</strong>开盘价、VWAP、还是限价单排队？</li>
+    <li><strong>能不能成交？</strong>涨停买不到，跌停卖不掉，停牌无法交易。</li>
+    <li><strong>成交多少？</strong>你的量占盘口多大比例？超过 10% 就会显著冲击。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>fill_model.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+
+def can_trade(row, side: str, limit_pct: float = 0.098) -&gt; bool:
+    """A 股涨跌停/停牌过滤。row 需含 open/high/low/close/prev_close/volume。"""
+    if row["volume"] &lt;= 0:
+        return False                                  # 停牌
+    ret = row["open"] / row["prev_close"] - 1
+    if side == "buy" and ret &gt;= limit_pct and row["high"] == row["low"]:
+        return False                                  # 一字涨停，买不到
+    if side == "sell" and ret &lt;= -limit_pct and row["high"] == row["low"]:
+        return False                                  # 一字跌停，卖不掉
+    return True
+
+
+def fill_price(open_price: float, side: str, spread_bps: float,
+               impact_bps: float, slippage_bps: float) -&gt; float:
+    """在开盘价基础上，买方上浮、卖方下调。"""
+    total = (spread_bps / 2 + impact_bps + slippage_bps) / 1e4
+    return open_price * (1 + total) if side == "buy" else open_price * (1 - total)
+
+
+def impact_bps(order_value: float, adv_value: float, coef: float = 10.0) -&gt; float:
+    """平方根冲击模型：成本 ∝ sqrt(订单占日均成交额比例)。"""
+    if adv_value &lt;= 0:
+        return 999
+    participation = order_value / adv_value
+    return coef * np.sqrt(participation) * 100   # 转成 bps</code></pre>
+  </div>
+
+  <h2><span class="h2-n">8.6</span>过拟合的数学：为什么「最优参数」是陷阱</h2>
+
+  <p>
+    假设你有 10 个参数，每个试 5 个值，组合空间是 5¹⁰ ≈ 976 万。
+    你不需要真的试完——遗传算法、网格搜索、甚至手动调参，都会把你推向
+    「在这段历史上最好」的那个点。而这个点，大概率是噪声的局部极值。
+  </p>
+
+  <p>
+    更 formal 地说：如果 N 个策略的真实夏普都是 0，那么最大夏普的期望约为
+    <span class="eq-inline">√(2 ln N) / √T</span>（T 为年数）。试 100 个、5 年数据，
+    期望最大夏普约 1.36。这就是为什么「我试了 100 个策略，最好的夏普 1.5」
+    完全不能说明任何问题。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">参数敏感性的正确用法</div>
+    <p>
+      不要找「最优点」，要找「稳定的高原」。把参数网格画成热力图，
+      如果最优点周围一片绿（好），说明稳健；如果最优点是孤立的红点，周围全是蓝（差），
+      那它是过拟合。<strong>宁可要一个平庸但稳定的参数，也不要一个优秀但脆弱的参数。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">8.7</span>样本外：Walk-Forward 与 Purged CV</h2>
+
+  <h3>Walk-Forward</h3>
+
+  <p>
+    把时间切成若干段：用前 3 年训练/选参，第 4 年测试；然后窗口向前滚动一年，
+    重复。最终把所有测试段拼起来，得到「样本外」的资金曲线。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 230" role="img" aria-label="Walk-forward 验证">
+        <g font-family="monospace" font-size="9">
+          <!-- rows -->
+          <g>
+            <rect x="80" y="30" width="120" height="18" fill="#c3cedb"/>
+            <rect x="200" y="30" width="40" height="18" fill="#b0512f" opacity=".75"/>
+            <text x="30" y="43" fill="#79818b">Fold 1</text>
+          </g>
+          <g>
+            <rect x="120" y="62" width="120" height="18" fill="#c3cedb"/>
+            <rect x="240" y="62" width="40" height="18" fill="#b0512f" opacity=".75"/>
+            <text x="30" y="75" fill="#79818b">Fold 2</text>
+          </g>
+          <g>
+            <rect x="160" y="94" width="120" height="18" fill="#c3cedb"/>
+            <rect x="280" y="94" width="40" height="18" fill="#b0512f" opacity=".75"/>
+            <text x="30" y="107" fill="#79818b">Fold 3</text>
+          </g>
+          <g>
+            <rect x="200" y="126" width="120" height="18" fill="#c3cedb"/>
+            <rect x="320" y="126" width="40" height="18" fill="#b0512f" opacity=".75"/>
+            <text x="30" y="139" fill="#79818b">Fold 4</text>
+          </g>
+          <g>
+            <rect x="240" y="158" width="120" height="18" fill="#c3cedb"/>
+            <rect x="360" y="158" width="40" height="18" fill="#b0512f" opacity=".75"/>
+            <text x="30" y="171" fill="#79818b">Fold 5</text>
+          </g>
+        </g>
+
+        <line x1="80" y1="200" x2="620" y2="200" stroke="#d8d2c3"/>
+        <text x="80" y="216" font-family="monospace" font-size="9" fill="#a8aeb6">t₀</text>
+        <text x="600" y="216" font-family="monospace" font-size="9" fill="#a8aeb6">今天</text>
+
+        <rect x="440" y="20" width="14" height="10" fill="#c3cedb"/>
+        <text x="460" y="29" font-family="sans-serif" font-size="10" fill="#454d57">训练 / 选参</text>
+        <rect x="540" y="20" width="14" height="10" fill="#b0512f" opacity=".75"/>
+        <text x="560" y="29" font-family="sans-serif" font-size="10" fill="#454d57">样本外测试</text>
+      </svg>
+    </div>
+    <figcaption><b>图 8-2</b>　Walk-forward：每次只用过去的数据选参，用紧接着的未来测试。它模拟了真实的研究过程，因此比一次性切分更可信。</figcaption>
+  </figure>
+
+  <h3>Purged K-Fold 与 Embargo</h3>
+
+  <p>
+    如果策略的标签是「未来 20 日收益」，那么相邻样本的标签会重叠。
+    随机切分会让训练集和测试集共享同一段未来——这叫<strong>标签泄漏</strong>。
+  </p>
+
+  <p>
+    López de Prado 提出的解法是：在训练集和测试集之间<strong>挖掉一段</strong>
+    （purge），并额外留出一段缓冲（embargo），确保没有重叠。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>purged_cv.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+
+def purged_splits(n_samples: int, n_splits: int = 5,
+                  label_horizon: int = 20, embargo: int = 5):
+    """返回 (train_idx, test_idx)，训练集已剔除与测试集标签重叠的部分。"""
+    indices = np.arange(n_samples)
+    fold_size = n_samples // n_splits
+
+    for k in range(n_splits):
+        test_start = k * fold_size
+        test_end = min((k + 1) * fold_size, n_samples)
+        test_idx = indices[test_start:test_end]
+
+        # 测试集标签会用到 test_end + horizon 的数据
+        purge_end = min(test_end + label_horizon + embargo, n_samples)
+        train_idx = np.concatenate([
+            indices[:max(0, test_start - label_horizon)],
+            indices[purge_end:],
+        ])
+        if len(train_idx) == 0:
+            continue
+        yield train_idx, test_idx</code></pre>
+  </div>
+
+  <h2><span class="h2-n">8.8</span>动手：一台尽量诚实的回测器</h2>
+
+  <p>
+    下面这个引擎只有 100 多行，但它把该有的都做了：次日开盘成交、显式成本、
+    涨跌停过滤、逐日盯市。它的目标不是快，是<strong>让你无法自欺</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>engine.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>from dataclasses import dataclass
+import numpy as np
+import pandas as pd
+
+
+@dataclass
+class Costs:
+    commission: float = 0.0003     # 双边佣金
+    stamp_tax: float = 0.0005      # 卖出印花税
+    slippage: float = 0.0010       # 单边滑点（含半价差）
+
+
+class Backtest:
+    """极简事件驱动回测器。
+
+    prices:  MultiIndex (date, symbol) 的 DataFrame，含 open/high/low/close/volume
+    target:  MultiIndex (date, symbol) 的目标权重，date 为信号日（收盘后生成）
+    """
+
+    def __init__(self, prices: pd.DataFrame, target: pd.DataFrame,
+                 capital: float = 1_000_000, costs: Costs = Costs(),
+                 max_weight: float = 0.10, max_leverage: float = 1.0):
+        self.px = prices.sort_index()
+        self.target = target.sort_index()
+        self.capital = capital
+        self.costs = costs
+        self.max_weight = max_weight
+        self.max_leverage = max_leverage
+
+    def run(self) -&gt; pd.DataFrame:
+        dates = self.px.index.get_level_values(0).unique().sort_values()
+        symbols = self.px.index.get_level_values(1).unique()
+
+        cash = self.capital
+        shares = pd.Series(0.0, index=symbols)
+        prev_close = pd.Series(np.nan, index=symbols)
+        records = []
+        traded_today = 0.0
+
+        for i, date in enumerate(dates):
+            day = self.px.loc[date].reindex(symbols)
+            open_px = day["open"]
+            close_px = day["close"]
+
+            # ---- 1. 开盘：执行昨日信号 ----
+            traded_today = 0.0
+            if i &gt; 0:
+                prev_date = dates[i - 1]
+                if prev_date in self.target.index.get_level_values(0):
+                    w = self.target.loc[prev_date].reindex(symbols).fillna(0.0)
+                    w = w.clip(-self.max_weight, self.max_weight)
+                    if w.abs().sum() &gt; self.max_leverage:
+                        w *= self.max_leverage / w.abs().sum()
+
+                    equity_open = cash + (shares * open_px.fillna(prev_close)).sum()
+                    desired = (w * equity_open / open_px).replace([np.inf, -np.inf], np.nan)
+
+                    for sym in symbols:
+                        if not np.isfinite(open_px.get(sym, np.nan)) or open_px[sym] &lt;= 0:
+                            continue
+                        if day.loc[sym, "volume"] &lt;= 0:
+                            continue
+                        delta = desired.get(sym, 0) - shares[sym]
+                        if abs(delta * open_px[sym]) &lt; 1000:
+                            continue
+
+                        side = "buy" if delta &gt; 0 else "sell"
+                        px = open_px[sym] * (1 + self.costs.slippage * (1 if side == "buy" else -1))
+                        fee = abs(delta * px) * (self.costs.commission +
+                                                 (self.costs.stamp_tax if side == "sell" else 0))
+                        cash -= delta * px + fee
+                        shares[sym] += delta
+                        traded_today += abs(delta * px)
+
+            # ---- 2. 收盘：盯市 ----
+            equity = cash + (shares * close_px.fillna(prev_close)).sum()
+            gross = (shares * close_px.fillna(prev_close)).abs().sum()
+            records.append({"date": date, "equity": equity, "cash": cash,
+                            "gross": gross, "traded": traded_today})
+            prev_close = close_px.combine_first(prev_close)
+
+        out = pd.DataFrame(records).set_index("date")
+        out["returns"] = out["equity"].pct_change().fillna(0)
+        out["exposure"] = out["gross"] / out["equity"]
+        out["turnover"] = out["traded"] / out["equity"]
+        return out</code></pre>
+  </div>
+
+  <p>
+    这个引擎有几个刻意的设计，值得注意：
+  </p>
+
+  <ul>
+    <li><strong>信号日与执行日分离</strong>：<code>target</code> 在 T 日收盘生成，T+1 开盘执行。这一行代码消灭了 80% 的前视偏差。</li>
+    <li><strong>按开盘价重算股数</strong>：不是简单地按目标权重买入，而是用「当前权益 ÷ 开盘价」算目标股数，避免权重漂移。</li>
+    <li><strong>显式扣费</strong>：佣金、印花税、滑点分别计算，不混在一起。</li>
+    <li><strong>最小交易额过滤</strong>：<code>&lt; 1000</code> 元的调仓不执行，避免不现实的碎股交易。</li>
+  </ul>
+
+  <div class="box warn">
+    <div class="box-label">它仍然不完美</div>
+    <p>
+      它没有模拟：部分成交、涨跌停无法成交、停牌、T+1 限制、以及冲击成本随订单量变化。
+      在生产环境里，这些都要补上。但即使只有这些，它已经比 90% 的「按收盘价全仓成交」
+      的回测诚实得多。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">8.9</span>一份回测报告应该长什么样</h2>
+
+  <p>
+    不要只给一条资金曲线。一份能让人信服的回测报告，至少包含：
+  </p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>基础指标</h4>
+      <p>CAGR、年化波动、夏普、索提诺、最大回撤、卡玛、胜率、盈亏比、年化换手。</p>
+    </div>
+    <div class="card">
+      <h4>分年度收益</h4>
+      <p>每一年的收益与回撤。如果收益集中在某一年，说明策略依赖特定环境。</p>
+    </div>
+    <div class="card">
+      <h4>成本敏感性</h4>
+      <p>把单边成本从 0 调到 50bps，画一条「成本 → 夏普」的曲线。看它在哪一点归零。</p>
+    </div>
+    <div class="card">
+      <h4>参数敏感性</h4>
+      <p>参数网格的热力图。最优点是否被「高原」包围？</p>
+    </div>
+    <div class="card">
+      <h4>归因</h4>
+      <p>收益来自市场 beta、行业、风格，还是真正的选股？</p>
+    </div>
+    <div class="card">
+      <h4>极端情景</h4>
+      <p>2015 股灾、2020 年 3 月、2022 年，策略分别发生了什么？</p>
+    </div>
+  </div>
+
+  <h2><span class="h2-n">8.10</span>陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用收盘价成交，且信号也用了收盘价。</li>
+    <li>成本设为 0，或者只算佣金不算滑点。</li>
+    <li>在全样本上调参，然后报告全样本结果。</li>
+    <li>样本外只留最后 10%，且反复用它来「确认」。</li>
+    <li>忽略涨跌停、停牌、T+1。</li>
+    <li>用随机 K 折交叉验证处理时间序列。</li>
+    <li>看到夏普 2 就兴奋，没有做参数敏感性和成本压力测试。</li>
+    <li>回测报告只展示资金曲线，不展示分年度、不回撤、不归因。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>Backtest</code> 跑一个简单的 20 日均线策略，然后分别把成本设为 0、10bps、30bps，观察夏普的衰减。</li>
+      <li>故意在信号里加入 <code>shift(-1)</code>，制造前视偏差，看夏普会虚高多少。这个数字就是「作弊的收益」。</li>
+      <li>把 <code>Backtest</code> 改成支持 T+1（当日买入次日才能卖），观察换手率高的策略受到什么影响。</li>
+      <li>为一个策略写一份完整的回测报告，包含 8.9 节的所有要素。</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>回测的目的是证伪；能杀死的策略越多，剩下的越可信。</li>
+      <li>向量化做研究，事件驱动做验证；两者不能互相替代。</li>
+      <li>前视偏差有十种常见变体，核心都是「时间戳错位」。</li>
+      <li>成本必须显式建模并做压力测试；零成本回测没有意义。</li>
+      <li>试 N 个策略的最大夏普期望约为 √(2 ln N)/√T，这就是过拟合的数学。</li>
+      <li>Walk-forward 与 Purged CV 是处理时间序列的正确方式。</li>
+    </ul>
+  </div>
+</section>

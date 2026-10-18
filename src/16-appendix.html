@@ -1,0 +1,399 @@
+<section class="chapter" id="appendix">
+  <div class="ch-head">
+    <div class="ch-num">Appendix · 附录</div>
+    <h1 class="ch-title">工具、术语<br>与清单</h1>
+    <p class="ch-abs">
+      这里是可以反复查阅的部分：一套能直接用的 Python 环境、一张中英对照的术语表、
+      一份经过筛选的书单、一张打印出来贴在显示器旁的检查清单，以及常用公式速查。
+    </p>
+    <div class="ch-meta">
+      <span>类型 <b>参考</b></span>
+      <span>用途 <b>随时查阅</b></span>
+    </div>
+  </div>
+
+  <h2><span class="h2-n">A</span>环境与工具链</h2>
+
+  <p>
+    不要一上来就装一堆框架。最小可用集合只有五个包，剩下的按需再加。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>requirements.txt</span><button class="copy-btn">COPY</button></div>
+<pre><code>numpy&gt;=1.26
+pandas&gt;=2.1
+matplotlib&gt;=3.8
+scipy&gt;=1.11
+statsmodels&gt;=0.14
+
+# 研究阶段可选
+scikit-learn&gt;=1.4      # 机器学习
+pyarrow&gt;=15.0          # parquet 读写，比 csv 快 10 倍
+jupyterlab&gt;=4.0        # 交互式研究
+
+# 实盘阶段可选
+apscheduler&gt;=3.10      # 定时任务
+sqlalchemy&gt;=2.0        # 状态持久化
+loguru&gt;=0.7            # 结构化日志</code></pre>
+  </div>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>setup.sh</span><button class="copy-btn">COPY</button></div>
+<pre><code>python3 -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -r requirements.txt
+
+# 建议的目录结构
+# project/
+# ├── data/           # 原始数据（只读）
+# ├── cache/          # 中间结果
+# ├── src/
+# │   ├── data.py
+# │   ├── signal.py
+# │   ├── portfolio.py
+# │   ├── engine.py
+# │   └── metrics.py
+# ├── notebooks/      # 研究草稿
+# ├── reports/        # 回测报告
+# └── config.yaml     # 参数与版本</code></pre>
+  </div>
+
+  <div class="box note">
+    <div class="box-label">数据源的选择</div>
+    <p>
+      日频行情：优先选提供<strong>历史成分股、退市股票、复权因子</strong>的数据商。
+      基本面：必须有<strong>公布日</strong>字段（PIT）。
+      不要用「爬来的免费数据」做最终决策——它的错误不会报错，只会让你的回测更好看。
+      先用小样本手工核对 20 条，再全量使用。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">B</span>术语表</h2>
+
+  <div class="two-col" style="font-size:14.5px;line-height:1.9;">
+    <p><strong>Alpha</strong>　扣除风险因子暴露后的超额收益。</p>
+    <p><strong>Beta</strong>　对市场波动的敏感度。</p>
+    <p><strong>Bid-Ask Spread</strong>　买一与卖一的价差。</p>
+    <p><strong>Slippage</strong>　滑点，预期价格与实际成交价的差。</p>
+    <p><strong>Capacity</strong>　策略在成本吃掉 alpha 前能容纳的资金量。</p>
+    <p><strong>CAGR</strong>　复合年化增长率。</p>
+    <p><strong>Calmar</strong>　CAGR 除以最大回撤。</p>
+    <p><strong>Cointegration</strong>　协整，两个非平稳序列的线性组合平稳。</p>
+    <p><strong>CVaR</strong>　条件风险价值，尾部损失的期望。</p>
+    <p><strong>Drawdown</strong>　从历史高点的回撤。</p>
+    <p><strong>ERC</strong>　等风险贡献，风险平价的核心。</p>
+    <p><strong>Factor</strong>　解释收益横截面差异的变量。</p>
+    <p><strong>FDR</strong>　错误发现率，多重检验的一种控制方法。</p>
+    <p><strong>IC</strong>　信息系数，因子与未来收益的相关系数。</p>
+    <p><strong>ICIR</strong>　IC 均值除以 IC 标准差。</p>
+    <p><strong>Implementation Shortfall</strong>　实施差额，决策价与成交价的差。</p>
+    <p><strong>Kelly</strong>　使长期增长率最大的下注比例。</p>
+    <p><strong>Look-ahead Bias</strong>　前视偏差，使用了未来信息。</p>
+    <p><strong>Market Impact</strong>　市场冲击，订单对价格的影响。</p>
+    <p><strong>MDD</strong>　最大回撤。</p>
+    <p><strong>Momentum</strong>　动量，过去涨的继续涨。</p>
+    <p><strong>PIT</strong>　Point-in-Time，按当时可知的信息。</p>
+    <p><strong>Purged CV</strong>　剔除标签重叠的交叉验证。</p>
+    <p><strong>Sharpe</strong>　单位波动的超额收益。</p>
+    <p><strong>Sortino</strong>　单位下行波动的超额收益。</p>
+    <p><strong>Survivorship Bias</strong>　幸存者偏差。</p>
+    <p><strong>Triple Barrier</strong>　三重障碍法，一种标签构造方法。</p>
+    <p><strong>VaR</strong>　风险价值，给定置信度下的最大损失。</p>
+    <p><strong>Volatility Drag</strong>　波动拖累，σ²/2。</p>
+    <p><strong>Walk-Forward</strong>　滚动向前验证。</p>
+  </div>
+
+  <h2><span class="h2-n">C</span>书单</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:200px;">书名</th><th>作者</th><th>为什么读</th></tr></thead>
+      <tbody>
+        <tr><td><b>Advances in Financial Machine Learning</b></td><td>Marcos López de Prado</td><td>标签、Purged CV、元标签。第三、四部分最实用。</td></tr>
+        <tr><td><b>Algorithmic Trading</b></td><td>Ernest Chan</td><td>均值回归、动量、配对交易的入门实现。</td></tr>
+        <tr><td><b>Trading and Exchanges</b></td><td>Larry Harris</td><td>市场微观结构的百科，理解盘口与流动性必读。</td></tr>
+        <tr><td><b>Active Portfolio Management</b></td><td>Grinold &amp; Kahn</td><td>因子、信息比率、组合构建的行业标准。</td></tr>
+        <tr><td><b>Expected Returns</b></td><td>Antti Ilmanen</td><td>各类资产风险溢价的宏观视角。</td></tr>
+        <tr><td><b>Fooled by Randomness</b></td><td>Nassim Taleb</td><td>运气与技能的区分，交易心理的清醒剂。</td></tr>
+        <tr><td><b>The Man Who Solved the Market</b></td><td>Gregory Zuckerman</td><td>文艺复兴的故事，理解「系统化」的含义。</td></tr>
+        <tr><td><b>Options, Futures and Other Derivatives</b></td><td>John Hull</td><td>衍生品定价的标准教材，做期权前必读。</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">D</span>回测自检清单</h2>
+
+  <div class="box">
+    <div class="box-label">每次回测前，逐条打勾</div>
+    <ul class="checklist" style="margin-bottom:0;">
+      <li>信号只用了 T 日及之前的数据，成交在 T+1。</li>
+      <li>收益用后复权价计算，下单价用不复权价。</li>
+      <li>股票池是「当时」的成分股，包含已退市标的。</li>
+      <li>财务数据用的是公布日，不是报告期。</li>
+      <li>标准化/归一化没有使用全样本统计量。</li>
+      <li>成本包含佣金、印花税、滑点、冲击。</li>
+      <li>涨跌停、停牌、T+1 已被建模。</li>
+      <li>参数是在训练集上选的，测试集从未参与。</li>
+      <li>做了参数敏感性检查，最优解位于高原。</li>
+      <li>做了成本压力测试，知道策略的生存边界。</li>
+      <li>收益做了归因，alpha 的 t 值可接受。</li>
+      <li>记录了这次试验，包括失败的版本。</li>
+    </ul>
+  </div>
+
+  <h2><span class="h2-n">E</span>公式速查</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:200px;">名称</th><th>公式</th></tr></thead>
+      <tbody>
+        <tr><td>期望值</td><td><code>E = p·W − (1−p)·L</code></td></tr>
+        <tr><td>盈亏平衡胜率</td><td><code>p* = L / (W + L)</code></td></tr>
+        <tr><td>凯利（离散）</td><td><code>f* = p − (1−p)/b</code></td></tr>
+        <tr><td>凯利（连续）</td><td><code>f* = μ / σ²</code></td></tr>
+        <tr><td>几何收益</td><td><code>g ≈ μ − σ²/2</code></td></tr>
+        <tr><td>年化波动</td><td><code>σ_year = σ_day × √252</code></td></tr>
+        <tr><td>夏普</td><td><code>(R − Rf) / σ</code></td></tr>
+        <tr><td>最大回撤</td><td><code>max((peak − trough) / peak)</code></td></tr>
+        <tr><td>组合方差</td><td><code>σp² = ΣΣ wi·wj·σi·σj·ρij</code></td></tr>
+        <tr><td>风险贡献</td><td><code>RCi = wi·(Σw)i / σp</code></td></tr>
+        <tr><td>冲击成本</td><td><code>Y·σ·√(Q/V)</code></td></tr>
+        <tr><td>凯利增长率</td><td><code>g(f) = p·ln(1+fb) + (1−p)·ln(1−f)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">F</span>期权速览</h2>
+
+  <p>
+    期权值得单独占一节，因为它是唯一一种「损益非线性」的基础工具。
+    股票、期货都是线性的：涨 1 块赚 1 块。期权不是——它让你可以用有限的风险，
+    表达对「波动率」而不是「方向」的观点。代价是它比股票复杂一个数量级。
+  </p>
+
+  <h3>四个基本头寸</h3>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 420" role="img" aria-label="期权四种基本头寸的损益图">
+        <g font-family="monospace" font-size="9" fill="#a8aeb6">
+          <text x="30" y="16">LONG CALL</text>
+          <text x="350" y="16">LONG PUT</text>
+          <text x="30" y="226">SHORT CALL</text>
+          <text x="350" y="226">SHORT PUT</text>
+        </g>
+
+        <!-- ===== top row: zero line y=110 ===== -->
+        <g stroke="#e7e2d6">
+          <line x1="30" y1="110" x2="300" y2="110"/>
+          <line x1="350" y1="110" x2="620" y2="110"/>
+        </g>
+        <g font-family="monospace" font-size="8" fill="#c2c7cd">
+          <text x="16" y="113">0</text>
+          <text x="336" y="113">0</text>
+        </g>
+
+        <!-- long call -->
+        <path d="M30 140 L170 140 L290 45" fill="none" stroke="#2b6a4d" stroke-width="2"/>
+        <line x1="170" y1="110" x2="170" y2="160" stroke="#e7e2d6" stroke-dasharray="3 3"/>
+        <text x="166" y="176" font-family="monospace" font-size="8" fill="#a8aeb6">K</text>
+        <text x="196" y="58" font-family="sans-serif" font-size="9" fill="#2b6a4d">盈利无限</text>
+        <text x="34" y="156" font-family="sans-serif" font-size="9" fill="#79818b">最大亏损 = 权利金</text>
+
+        <!-- long put -->
+        <path d="M350 45 L490 140 L610 140" fill="none" stroke="#2b6a4d" stroke-width="2"/>
+        <line x1="490" y1="110" x2="490" y2="160" stroke="#e7e2d6" stroke-dasharray="3 3"/>
+        <text x="486" y="176" font-family="monospace" font-size="8" fill="#a8aeb6">K</text>
+        <text x="354" y="36" font-family="sans-serif" font-size="9" fill="#2b6a4d">盈利随下跌放大</text>
+        <text x="512" y="156" font-family="sans-serif" font-size="9" fill="#79818b">最大亏损 = 权利金</text>
+
+        <!-- ===== bottom row: zero line y=320 ===== -->
+        <g stroke="#e7e2d6">
+          <line x1="30" y1="320" x2="300" y2="320"/>
+          <line x1="350" y1="320" x2="620" y2="320"/>
+        </g>
+        <g font-family="monospace" font-size="8" fill="#c2c7cd">
+          <text x="16" y="323">0</text>
+          <text x="336" y="323">0</text>
+        </g>
+
+        <!-- short call -->
+        <path d="M30 290 L170 290 L290 385" fill="none" stroke="#b0512f" stroke-width="2"/>
+        <line x1="170" y1="270" x2="170" y2="320" stroke="#e7e2d6" stroke-dasharray="3 3"/>
+        <text x="166" y="336" font-family="monospace" font-size="8" fill="#a8aeb6">K</text>
+        <text x="34" y="284" font-family="sans-serif" font-size="9" fill="#b0512f">最大盈利 = 权利金</text>
+        <text x="212" y="378" font-family="sans-serif" font-size="9" fill="#b0512f">亏损无限</text>
+
+        <!-- short put -->
+        <path d="M350 385 L490 290 L610 290" fill="none" stroke="#b0512f" stroke-width="2"/>
+        <line x1="490" y1="270" x2="490" y2="320" stroke="#e7e2d6" stroke-dasharray="3 3"/>
+        <text x="486" y="336" font-family="monospace" font-size="8" fill="#a8aeb6">K</text>
+        <text x="354" y="406" font-family="sans-serif" font-size="9" fill="#b0512f">亏损随下跌放大</text>
+        <text x="512" y="284" font-family="sans-serif" font-size="9" fill="#b0512f">最大盈利 = 权利金</text>
+      </svg>
+    </div>
+    <figcaption><b>图 A-1</b>　四种基本头寸。注意买方（上排）的最大亏损有限、收益可能很大；卖方（下排）正好相反——这正是「负偏」的来源。</figcaption>
+  </figure>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:90px;">希腊字母</th><th>含义</th><th>直觉</th></tr></thead>
+      <tbody>
+        <tr><td><b>Delta</b></td><td>标的价格变动 1 元，期权价格变动多少</td><td>相当于持有多少股</td></tr>
+        <tr><td><b>Gamma</b></td><td>Delta 对标的价格的敏感度</td><td>「加速器」，临近到期时最大</td></tr>
+        <tr><td><b>Theta</b></td><td>时间每过一天，期权价值减少多少</td><td>买方的租金，卖方的收入</td></tr>
+        <tr><td><b>Vega</b></td><td>隐含波动率变动 1%，期权价值变动多少</td><td>你对「恐慌程度」的暴露</td></tr>
+        <tr><td><b>Rho</b></td><td>利率变动的影响</td><td>长期期权才明显</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">个人最容易踩的坑</div>
+    <p>
+      <strong>卖出期权收权利金</strong>看起来像「稳定收租」：连续 20 个月每月赚 1%，
+      第 21 个月亏掉 40%。这是典型的负偏策略，夏普很高，尾部很厚。
+      如果你要卖期权，必须同时回答：我的最大损失是多少？我有没有对冲？仓位占多少？
+    </p>
+  </div>
+
+  <p>
+    学习路径建议：先理解损益图与内在价值/时间价值，再学 Black-Scholes 的直觉
+    （不是推导），最后用模拟盘做 50 笔买方交易，体会 Theta 的衰减。
+    在没有搞清楚 Gamma 之前，不要碰卖方。
+  </p>
+
+  <h2><span class="h2-n">G</span>12 周自学路径</h2>
+
+  <p>
+    如果你每周能投入 8–10 小时，可以按这个节奏走完本书。每周的输出物比阅读更重要——
+    没有产出，就没有真正学会。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:70px;">周次</th><th>内容</th><th>本周产出</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>第 0–1 章</td><td>写出你的资金约束与目标；跑通撮合引擎 demo</td></tr>
+        <tr><td>2</td><td>第 2 章</td><td>用蒙特卡洛验证三种仓位的结果差异</td></tr>
+        <tr><td>3</td><td>第 3 章</td><td>实现 <code>metrics.py</code>，算出一只 ETF 的完整指标</td></tr>
+        <tr><td>4</td><td>第 4 章</td><td>完成一次数据审计，找出 3 个数据问题</td></tr>
+        <tr><td>5</td><td>第 5 章</td><td>对一个策略做 bootstrap 与置换检验</td></tr>
+        <tr><td>6</td><td>第 6 章</td><td>完成一个单因子测试，画出分层收益</td></tr>
+        <tr><td>7</td><td>第 7 章</td><td>实现趋势与回归两个最小策略</td></tr>
+        <tr><td>8</td><td>第 8 章</td><td>跑通事件驱动回测，做成本压力测试</td></tr>
+        <tr><td>9</td><td>第 9 章</td><td>用 ERC 构建一个 5 资产组合</td></tr>
+        <tr><td>10</td><td>第 10 章</td><td>记录 20 笔真实交易的 TCA</td></tr>
+        <tr><td>11</td><td>第 11–12 章</td><td>搭一个带风控与对账的纸面交易系统</td></tr>
+        <tr><td>12</td><td>第 13–14 章</td><td>写出完整的策略报告与上线检查清单</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">H</span>20 个常见问题</h2>
+
+  <p>
+    这些问题来自真实的读者和初学者。答案很短，但每一条背后都有前面十几章的内容支撑。
+  </p>
+
+  <h3>关于入门</h3>
+
+  <p><strong>1. 需要多少启动资金？</strong><br>
+  学习阶段用「亏光也不影响生活」的金额，通常 1–5 万足够暴露所有执行问题。
+  资金太小（几千块）时，固定成本占比过高，学不到真实的成本结构。</p>
+
+  <p><strong>2. 要不要学 C++ 或低延迟？</strong><br>
+  除非你要做日内或做市，否则不需要。日频策略的瓶颈是想法和数据，不是微秒。
+  把学 C++ 的时间用来做 100 次诚实的回测，回报高得多。</p>
+
+  <p><strong>3. 技术指标（MACD、KDJ）有用吗？</strong><br>
+  它们是有用的<strong>特征</strong>，不是有用的<strong>策略</strong>。单独用几乎没有 alpha，
+  但作为多因子模型里的一个输入，可能贡献一点点信息。别把它们当圣杯。</p>
+
+  <p><strong>4. 要不要读金融工程硕士？</strong><br>
+  如果你想做机构量化，有帮助；如果你只想管好自己的钱，投入产出比很低。
+  这本书 + 一份干净的数据 + 两年的实盘记录，比一个学位更能说明问题。</p>
+
+  <p><strong>5. 应该做股票还是期货？</strong><br>
+  新手从股票或 ETF 开始：成本结构干净、数据质量好、不会被杠杆一夜清零。
+  期货适合已经能稳定盈利、并且理解基差与展期的人。</p>
+
+  <h3>关于研究</h3>
+
+  <p><strong>6. 需要多少年数据？</strong><br>
+  日频策略至少 5 年，最好包含一轮完整的牛熊。少于 3 年，你连一个像样的回撤都没见过。</p>
+
+  <p><strong>7. 为什么我的回测和实盘差这么多？</strong><br>
+  按概率排序：① 前视偏差；② 成本低估；③ 成交假设不现实；④ 幸存者偏差；
+  ⑤ 市场结构变了。逐条排查，通常前两条就能解释 80% 的差距。</p>
+
+  <p><strong>8. 用现成框架还是自己写？</strong><br>
+  第一遍自己写——你必须知道框架在哪些地方骗你。写完再用成熟的框架做交叉验证。
+  直接上手框架的人，通常不知道自己的回测为什么好看。</p>
+
+  <p><strong>9. 策略需要多复杂？</strong><br>
+  越简单越好。复杂度应该来自「对市场的理解」，而不是「模型的层数」。
+  一个能用三句话解释清楚的策略，比一个黑箱更容易维护，也更容易判断何时失效。</p>
+
+  <p><strong>10. 机器学习值得学吗？</strong><br>
+  值得，但优先级低于数据质量和验证设计。先用线性模型跑通全流程，
+  再考虑 GBDT。深度网络在日频、小样本的场景里，通常是负资产。</p>
+
+  <h3>关于实盘</h3>
+
+  <p><strong>11. 一个人能同时跑几个策略？</strong><br>
+  2–3 个，且逻辑要不相关。超过这个数，你无法对每个策略的失效做出及时判断，
+  也无法在出问题时定位原因。</p>
+
+  <p><strong>12. 要不要加杠杆？</strong><br>
+  先证明你在无杠杆下能稳定盈利两年，再考虑。杠杆放大的是<strong>波动</strong>，
+  而波动拖累是平方级的。1.5 倍杠杆看似温和，回撤会放大到 2 倍以上。</p>
+
+  <p><strong>13. 怎么判断策略失效了？</strong><br>
+  区分三件事：正常回撤（在历史分布内）、执行问题（滑点突然变大）、逻辑失效（假设被证伪）。
+  只有第三种需要退役。前两种需要的是耐心和排查，不是关掉系统。</p>
+
+  <p><strong>14. 亏损时怎么调整心态？</strong><br>
+  不靠心态，靠规则。事前写好最大回撤、单日亏损上限、退役条件；
+  触发时执行，不讨论。你在压力下做出的判断，大概率比冷静时差。</p>
+
+  <p><strong>15. 高频交易个人能做吗？</strong><br>
+  基本不能。你需要托管机房、交易所会员、极低费率、以及一个团队。
+  个人在速度上的竞争，等于用自行车参加 F1。</p>
+
+  <h3>关于职业与长期</h3>
+
+  <p><strong>16. 应该全职做交易吗？</strong><br>
+  先问三个问题：你有 24 个月的生活费吗？你的策略在扣除生活开支后还能复利吗？
+  你能承受连续一年没有收入吗？三个都是「是」，再考虑。</p>
+
+  <p><strong>17. 怎么看别人的策略或跟单？</strong><br>
+  看三样东西：最大回撤、收益归因、以及「他为什么愿意公开」。
+  一个真正有效的策略，容量有限，通常不需要卖课。</p>
+
+  <p><strong>18. 第一年应该设定什么目标？</strong><br>
+  不是收益率，是<strong>过程指标</strong>：完成 50 次回测、写 100 篇交易日志、
+  跑通一次完整的实盘流程、把最大回撤控制在预设范围内。收益是结果，不是目标。</p>
+
+  <p><strong>19. 需要每天盯盘吗？</strong><br>
+  低频策略不需要。盯盘的最大危害不是浪费时间，是让你<strong>忍不住干预</strong>。
+  把执行自动化，每天只看一次对账和告警。</p>
+
+  <p><strong>20. 学完这本书，我就能赚钱了吗？</strong><br>
+  不能。这本书能让你<strong>不亏得莫名其妙</strong>，并在机会出现时认得出它。
+  剩下的，需要你自己在市场里待够时间——而活下来，本身就是最大的优势。</p>
+
+  <div class="box quote" style="margin-top:52px;">
+    <div class="box-label">写在最后</div>
+    <p>
+      这本书里没有一个能让你立刻赚钱的「圣杯」。它给你的是一套<strong>判断力</strong>：
+      判断一个策略值不值得做、一个回测可不可信、一次亏损是运气还是错误。
+      这套判断力不会让你每次都赢，但它会让你在输的时候输得少，在赢的时候知道为什么。
+    </p>
+    <p style="margin-top:16px;">
+      市场会一直在那里。你不需要抓住每一次机会，你只需要在少数几次真正属于你的机会里，
+      下注足够重，并且活着等到它兑现。
+    </p>
+  </div>
+</section>

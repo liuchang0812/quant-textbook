@@ -1,0 +1,358 @@
+<section class="chapter" id="ch4">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 04 · 第二部 研究</div>
+    <h1 class="ch-title">数据<br>量化的原材料</h1>
+    <p class="ch-abs">
+      一个策略的成败，在写第一行模型代码之前就决定了一半——由你手里的数据决定。
+      复权算错、幸存者偏差、财报用了未来信息、停牌股票被当成可交易，
+      这些错误不会让回测报错，只会让它变得特别好看。这一章教你审计自己的数据。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>34 分钟</b></span>
+      <span>难度 <b>中级</b></span>
+      <span>代码 <b>数据审计</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    在软件工程里，垃圾进、垃圾出是一个老笑话。但在量化里，它更狠：
+    垃圾数据进来，出来的不是垃圾，而是<strong>一条漂亮的、会让你押上真金白银的资金曲线</strong>。
+    因为回测框架不会质疑数据，它只会忠实地把你的错误放大成收益。
+  </p>
+
+  <p>
+    我见过最常见的新手翻车现场，不是模型太复杂，而是：用今天的沪深 300 成分股，
+    回测了 2015 年的行情。那十年里被剔除的、退市的、暴雷的公司，全部从样本里消失了，
+    剩下的自然都是赢家。这个策略的年化收益能凭空多出 5 到 10 个百分点，而代码一行都没错。
+  </p>
+
+  <h2><span class="h2-n">4.1</span>数据的四个层级</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:110px;">层级</th><th>内容</th><th>典型频率</th><th>用在哪</th></tr></thead>
+      <tbody>
+        <tr><td><b>逐笔成交</b></td><td>每一笔成交的价格、数量、方向</td><td>毫秒级，每天数百万条</td><td>微观结构、执行分析、高频</td></tr>
+        <tr><td><b>快照 / 盘口</b></td><td>每隔 N 毫秒的十档行情</td><td>3 秒 / 500 毫秒</td><td>流动性估计、冲击模型</td></tr>
+        <tr><td><b>K 线</b></td><td>开高低收 + 成交量</td><td>1 分钟 ~ 月</td><td>中低频策略的主力</td></tr>
+        <tr><td><b>基本面</b></td><td>财报、股本、分红、行业分类</td><td>季度 / 事件驱动</td><td>因子投资、估值</td></tr>
+        <tr><td><b>另类数据</b></td><td>新闻、舆情、卫星、招聘、供应链</td><td>不定</td><td>超额信息，但清洗成本极高</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    对个人开发者，我的建议是：<strong>从日频 K 线 + 基本面开始</strong>。
+    这两个层级的数据便宜、干净、容易验证，而且日频策略的容量足够容纳个人资金。
+    逐笔数据看起来很酷，但它会把 80% 的时间消耗在数据工程上，而不是策略上。
+  </p>
+
+  <h2><span class="h2-n">4.2</span>K 线是怎么来的，以及它的三个坑</h2>
+
+  <p>
+    一根日 K 线包含四个价格和一个成交量。它们不是在同一时刻产生的：
+  </p>
+
+  <ul>
+    <li><strong>开盘价</strong>：集合竞价的成交价（A 股 9:25）。</li>
+    <li><strong>最高 / 最低</strong>：盘中任意时刻的极值，<em>你不知道先后顺序</em>。</li>
+    <li><strong>收盘价</strong>：收盘集合竞价的成交价（A 股 14:57–15:00）。</li>
+    <li><strong>成交量</strong>：全天累计，包含集合竞价。</li>
+  </ul>
+
+  <div class="box warn">
+    <div class="box-label">坑一：你不知道高低点谁先出现</div>
+    <p>
+      如果一根 K 线最高 10.5、最低 9.8，你的策略规则是「先触及 10.5 买入，再跌破 9.8 止损」，
+      回测引擎必须猜一个顺序。猜错了，结果天差地别。这就是为什么<strong>日内的止盈止损规则，
+      不能用日 K 线回测</strong>——你需要分钟线或逐笔数据。
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">坑二：收盘价不是可成交价</div>
+    <p>
+      收盘价是集合竞价的结果，你在盘中任何时刻都无法以它成交。用「当日收盘价」作为买入价，
+      等于假设你有预知能力，在 14:59:59 精确下单并成交。这是最普遍的前视偏差。
+      正确做法：信号用 T 日收盘计算，成交用 T+1 日开盘（或 VWAP）。
+    </p>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">坑三：成交量包含了你无法参与的部分</div>
+    <p>
+      集合竞价的成交量、大宗交易的量、以及算法单的冰山委托，都会让「成交量」这个数字
+      高估你可获得的流动性。经验法则是：<strong>你的单笔订单不超过该周期成交量的 1%–5%</strong>，
+      超过就会显著冲击价格。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">4.3</span>复权：一个必须算对的减法</h2>
+
+  <p>
+    股票会分红、送股、拆股。如果不做调整，价格序列会在除权日出现一个巨大的跳空，
+    而那个跳空不是收益，是会计处理。
+  </p>
+
+  <p>
+    假设某股票前收盘 100 元，每 10 股送 10 股（相当于 1 拆 2），除权后理论开盘价是 50 元。
+    如果你直接用原始价格算收益，会得到 −50% 的假暴跌。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 260" role="img" aria-label="复权方式对比">
+        <!-- left: raw -->
+        <text x="20" y="18" font-family="monospace" font-size="10" fill="#79818b" letter-spacing="1">不复权 / RAW</text>
+        <line x1="20" y1="200" x2="300" y2="200" stroke="#e7e2d6"/>
+        <path d="M20 90 L60 80 L100 86 L140 70 L175 76 L180 76 L185 160 L220 150 L260 158 L300 148"
+              fill="none" stroke="#b0512f" stroke-width="2"/>
+        <line x1="182" y1="60" x2="182" y2="180" stroke="#b0512f" stroke-dasharray="3 3" opacity=".5"/>
+        <text x="188" y="196" font-family="monospace" font-size="9" fill="#b0512f">除权日 −50%</text>
+        <text x="20" y="232" font-family="sans-serif" font-size="11" fill="#454d57">看起来像崩盘，实际只是拆股。</text>
+
+        <!-- right: adjusted -->
+        <text x="350" y="18" font-family="monospace" font-size="10" fill="#79818b" letter-spacing="1">后复权 / ADJUSTED</text>
+        <line x1="350" y1="200" x2="630" y2="200" stroke="#e7e2d6"/>
+        <path d="M350 90 L390 80 L430 86 L470 70 L505 76 L540 64 L580 72 L630 58"
+              fill="none" stroke="#1d3f63" stroke-width="2"/>
+        <text x="350" y="232" font-family="sans-serif" font-size="11" fill="#454d57">连续的价格序列，收益才是真的。</text>
+      </svg>
+    </div>
+    <figcaption><b>图 4-1</b>　同一只股票，不复权与后复权的差异。任何涉及收益率的计算，都必须使用复权价。</figcaption>
+  </figure>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:110px;">方式</th><th>调整基准</th><th>特点</th><th>适用</th></tr></thead>
+      <tbody>
+        <tr><td><b>前复权</b></td><td>以最新价为基准，向前调整历史价</td><td>最新价 = 真实价；历史价会随时间变化</td><td>看图、技术分析</td></tr>
+        <tr><td><b>后复权</b></td><td>以上市首日为基准，向后调整</td><td>历史价不变，最新价被放大</td><td><strong>回测计算收益</strong></td></tr>
+        <tr><td><b>不复权</b></td><td>原始成交价</td><td>有跳空，但价格是真实的</td><td>撮合、订单价格、涨跌停判断</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box idea">
+    <div class="box-label">实践原则</div>
+    <p>
+      <strong>算收益用后复权，下单价用不复权。</strong>
+      这两件事经常被混在一起。回测里如果全程用后复权价去挂单，你会挂在一个现实中不存在的价格上；
+      如果全程用不复权价算收益，你会在每个除权日凭空亏掉一笔。
+      正确做法：维护两套价格序列，或者在成交时用「复权因子」做转换。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">4.4</span>幸存者偏差：死人不会说话</h2>
+
+  <p>
+    这是回测里最隐蔽、杀伤力最大的偏差。它的本质是：<strong>你今天的股票池，是「活到今天」的股票</strong>。
+    而那些退市的、被并购的、财务造假被摘牌的，全部不在里面。
+  </p>
+
+  <p>
+    后果有多严重？学术研究显示，用「当前成分股」回测美股 1980–2010 的策略，
+    年化收益会被高估 1.5%–4%。在 A 股，由于退市率较低但借壳、重组频繁，偏差的形式不同但同样存在。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>survivorship.py</span><button class="copy-btn">COPY</button></div>
+<pre><code># 错误做法：用今天的成分股回测历史
+universe_today = get_index_constituents("000300.SH", date="2026-10-01")
+backtest(universe=universe_today, start="2015-01-01")
+
+# 正确做法：每个调仓日，取「当时」的成分股
+for rebalance_date in rebalance_dates:
+    universe = get_index_constituents("000300.SH", date=rebalance_date)
+    portfolio = build(universe, rebalance_date)
+
+# 更严谨：使用包含退市股票的「全历史证券主表」
+all_stocks = get_all_listed_and_delisted(start="2015-01-01")
+# 每只股票有 list_date / delist_date，回测时按日期过滤</code></pre>
+  </div>
+
+  <p>
+    如果你拿不到历史成分股，至少要做一件事：<strong>把退市股票加回样本</strong>。
+    很多数据源提供「已退市证券列表」，把它们的最后一段行情接上，能消除大部分偏差。
+  </p>
+
+  <h2><span class="h2-n">4.5</span>前视偏差：用了未来的信息</h2>
+
+  <p>
+    前视偏差（look-ahead bias）是指：在决策时，使用了当时还不可能知道的信息。
+    它有很多变体，每一种都很常见。
+  </p>
+
+  <h3>变体一：财报的「报告期」与「公布日」</h3>
+
+  <p>
+    2024 年年报的数据，报告期是 2024-12-31，但公布日可能是 2025-04-28。
+    如果你在 2025-01-15 就用上了这份年报，你提前了三个半月知道未来。
+  </p>
+
+  <div class="math">
+    可用日期 = max(报告期, 实际公布日) + 1 个交易日
+    <span class="eq-n">(4.1)</span>
+  </div>
+
+  <p>
+    严谨的做法是使用 <strong>Point-in-Time（PIT）数据</strong>：每个财务字段都带有「何时可用」的时间戳。
+    没有 PIT 数据时，一个保守的近似是：年报用次年 5 月 1 日，一季报用 5 月 1 日，
+    半年报用 9 月 1 日，三季报用 11 月 1 日。
+  </p>
+
+  <h3>变体二：用全样本做标准化</h3>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>leak.py</span><button class="copy-btn">COPY</button></div>
+<pre><code># 错误：用了全样本的均值和标准差
+z = (df["pe"] - df["pe"].mean()) / df["pe"].std()
+
+# 正确：只用「截至当日」的历史数据
+z = (df["pe"] - df["pe"].expanding().mean()) / df["pe"].expanding().std()
+
+# 或者横截面标准化（同一天内比较，不跨时间）
+z = df.groupby("date")["pe"].transform(lambda s: (s - s.mean()) / s.std())</code></pre>
+  </div>
+
+  <h3>变体三：股票池用了未来的信息</h3>
+
+  <p>
+    「剔除 ST 股票」听起来很合理，但如果你用的是「今天是否 ST」来过滤十年前的样本，
+    你就提前知道了哪些公司会出问题。正确做法是用「当时是否 ST」。
+  </p>
+
+  <h3>变体四：参数的全局最优</h3>
+
+  <p>
+    这是最隐蔽的一种：你在全样本上找到了最优参数，然后报告全样本的回测结果。
+    这等于用未来数据选择了参数。第八章会讲怎么用 walk-forward 解决它。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">一个自检方法</div>
+    <p>
+      把你的策略在「随机打乱日期标签」的数据上跑一遍。如果它还能赚钱，
+      说明你的流程里有前视偏差或数据泄漏。<strong>这是最快的泄漏检测器。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">4.6</span>清洗：一份可执行的清单</h2>
+
+  <p>
+    真实数据永远是脏的。下面这份清单，建议做成一个脚本，每次拿到新数据先跑一遍。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:150px;">问题</th><th>表现</th><th>处理</th></tr></thead>
+      <tbody>
+        <tr><td><b>缺失值</b></td><td>停牌日无行情、字段为空</td><td>区分「停牌」与「数据缺失」；停牌日不前向填充价格</td></tr>
+        <tr><td><b>异常值</b></td><td>单日涨 300%、价格为 0 或负数</td><td>按涨跌停规则过滤；与相邻交易日比对</td></tr>
+        <tr><td><b>重复行</b></td><td>同一日期多条记录</td><td>按主键去重，保留最新</td></tr>
+        <tr><td><b>时间错位</b></td><td>不同市场时区不同</td><td>统一到 UTC，再转本地；注意夏令时</td></tr>
+        <tr><td><b>成交量单位</b></td><td>股 / 手 / 千股混用</td><td>统一为股，并在元数据里记录</td></tr>
+        <tr><td><b>除权未处理</b></td><td>价格跳空</td><td>用复权因子调整</td></tr>
+        <tr><td><b>退市缺失</b></td><td>样本里没有死掉的股票</td><td>补全退市列表</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>audit.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import pandas as pd
+import numpy as np
+
+
+def audit_prices(df: pd.DataFrame) -> pd.DataFrame:
+    """df 需包含: date, symbol, open, high, low, close, volume"""
+    df = df.sort_values(["symbol", "date"])
+    g = df.groupby("symbol", group_keys=False)
+
+    report = pd.DataFrame({
+        "rows": g.size(),
+        "missing_close": g["close"].apply(lambda s: s.isna().sum()),
+        "zero_volume_days": g["volume"].apply(lambda s: (s == 0).sum()),
+        "dup_dates": g["date"].apply(lambda s: s.duplicated().sum()),
+        "max_abs_ret": g["close"].apply(
+            lambda s: s.pct_change().abs().max()
+        ),
+    })
+
+    # 价格逻辑校验：high 必须 >= max(open, close)，low <= min(open, close)
+    bad_ohlc = ((df["high"] &lt; df[["open", "close"]].max(axis=1)) |
+                (df["low"] &gt; df[["open", "close"]].min(axis=1))).sum()
+    print(f"OHLC 逻辑错误: {bad_ohlc} 行")
+
+    # 单日涨跌幅超过 50%（A 股非 ST 不可能）标记为可疑
+    report["suspicious"] = report["max_abs_ret"] &gt; 0.5
+    return report.sort_values("suspicious", ascending=False)
+
+
+def check_calendar(df: pd.DataFrame, calendar: pd.DatetimeIndex):
+    """检查每个 symbol 的交易日是否与市场日历一致（排除停牌）。"""
+    counts = df.groupby("symbol")["date"].nunique()
+    expected = len(calendar)
+    gap = (counts / expected).describe()
+    print("覆盖率分布:\n", gap)
+    return counts[counts &lt; expected * 0.9]   # 覆盖率低于 90% 的标的</code></pre>
+  </div>
+
+  <h2><span class="h2-n">4.7</span>数据源：怎么选，怎么验</h2>
+
+  <p>
+    不要迷信「免费数据」。免费数据的问题不是不准，而是<strong>你不知道它哪里不准</strong>。
+    选数据源时，看四个维度：
+  </p>
+
+  <ol>
+    <li><strong>覆盖范围</strong>：是否包含退市股票？是否有历史成分股？</li>
+    <li><strong>时间戳</strong>：是否提供 PIT？财报有没有公布日字段？</li>
+    <li><strong>调整方式</strong>：复权因子是否单独提供？分红送股是否完整？</li>
+    <li><strong>可复现性</strong>：数据会不会被静默修订？有没有版本快照？</li>
+  </ol>
+
+  <div class="box note">
+    <div class="box-label">交叉验证</div>
+    <p>
+      任何关键数据，至少用两个来源对一遍。具体做法：随机抽 20 个「股票 × 日期」，
+      手工到交易所网站或行情软件核对收盘价与成交量。听起来很土，但这是唯一能建立信任的方法。
+      我见过太多人花了三个月调模型，最后发现是数据源把「手」当成「股」。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">4.8</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用当前成分股回测历史（幸存者偏差）。</li>
+    <li>用报告期代替公布日（前视偏差）。</li>
+    <li>用全样本均值/标准差做标准化（数据泄漏）。</li>
+    <li>用收盘价作为成交价。</li>
+    <li>用不复权价计算收益，或用复权价挂单。</li>
+    <li>把停牌日的前向填充价格当成真实成交价。</li>
+    <li>不检查 OHLC 的逻辑关系（high &lt; close 之类的脏数据）。</li>
+    <li>相信「免费数据」而不做交叉验证。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>下载一只股票 10 年的日线数据，找出所有除权日，手动计算复权因子，并与数据商提供的前复权价对比。</li>
+      <li>写一个脚本，检测你的数据集里有多少只股票在样本期内退市。如果没有，说明你的数据有幸存者偏差。</li>
+      <li>把 <code>audit.py</code> 跑在你手头的数据上，列出可疑标的前十名，逐个核查。</li>
+      <li>思考：如果你只能用「当前成分股」，有什么办法能部分修正幸存者偏差？（提示：行业中性化 + 加入已退市样本）</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>数据层级决定策略上限；个人从日频 K 线 + 基本面开始最划算。</li>
+      <li>K 线是采样产物，高低点顺序未知，收盘价不可成交。</li>
+      <li>算收益用后复权，下单价用不复权。</li>
+      <li>幸存者偏差会凭空制造 2%–5% 的年化收益，必须用历史成分股修正。</li>
+      <li>前视偏差的核心是「时间戳」：任何字段都要问「我什么时候能知道它」。</li>
+      <li>数据清洗要脚本化、清单化，并且做交叉验证。</li>
+    </ul>
+  </div>
+</section>

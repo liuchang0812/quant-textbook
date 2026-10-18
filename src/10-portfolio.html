@@ -1,0 +1,347 @@
+<section class="chapter" id="ch9">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 09 · 第三部 工程</div>
+    <h1 class="ch-title">组合构建<br>与风险管理</h1>
+    <p class="ch-abs">
+      单个策略决定你能不能赚钱，组合决定你能不能睡得着。
+      马科维茨给了我们优美的数学，但它在实战中经常变成「误差放大器」。
+      这一章讲清楚：分散到底怎么起作用、为什么风险平价更稳健、
+      以及如何用波动率目标化把一条颠簸的曲线变平滑。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>40 分钟</b></span>
+      <span>难度 <b>进阶</b></span>
+      <span>代码 <b>ERC 求解</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    假设你有两个策略，各自的年化收益都是 10%，波动都是 20%，相关性为 0。
+    各投一半，组合收益还是 10%，但波动降到 14.1%。<strong>你什么都没做，夏普从 0.5 变成了 0.71。</strong>
+    这就是分散的魔力——它是金融里唯一「免费的午餐」。
+  </p>
+
+  <p>
+    但这顿午餐有条件：相关性必须真的低，而且必须在<strong>你需要它低的时候</strong>也低。
+    而市场最擅长的，就是在你最需要分散的时候，让所有东西一起跌。
+  </p>
+
+  <h2><span class="h2-n">9.1</span>分散的数学：为什么 1+1 &lt; 2</h2>
+
+  <p>
+    对于 N 个等权、同波动率 σ、两两相关性 ρ 的资产，组合波动率是：
+  </p>
+
+  <div class="math">
+    σ<sub>p</sub> = σ · √( 1/N + (1 − 1/N)·ρ )
+    <span class="eq-n">(9.1)</span>
+  </div>
+
+  <p>
+    当 N → ∞，σ<sub>p</sub> → σ√ρ。这就是「不可分散的风险」。
+    如果 ρ = 0.5，你最多只能把波动降到原来的 70.7%，再怎么加资产都没用。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>资产数 N</th><th>ρ = 0</th><th>ρ = 0.3</th><th>ρ = 0.7</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td class="num">100%</td><td class="num">100%</td><td class="num">100%</td></tr>
+        <tr><td>5</td><td class="num">44.7%</td><td class="num">66.3%</td><td class="num">87.2%</td></tr>
+        <tr><td>10</td><td class="num">31.6%</td><td class="num">60.8%</td><td class="num">85.4%</td></tr>
+        <tr><td>30</td><td class="num">18.3%</td><td class="num">56.9%</td><td class="num">84.3%</td></tr>
+        <tr><td>∞</td><td class="num">0%</td><td class="num">54.8%</td><td class="num">83.7%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    两个结论：<strong>① 分散的收益在 10–20 个资产后迅速递减；② 相关性比数量重要得多。</strong>
+    持有 50 只科技股，不如持有 10 个真正不相关的资产类别。
+  </p>
+
+  <h2><span class="h2-n">9.2</span>马科维茨：优美的理论，糟糕的实践</h2>
+
+  <p>
+    均值-方差优化要解决的问题是：在给定风险下最大化收益。数学上很干净：
+  </p>
+
+  <div class="math">
+    max<sub>w</sub> &nbsp; wᵀμ − (λ/2)·wᵀΣw &nbsp;&nbsp; s.t. &nbsp; Σw<sub>i</sub> = 1
+    <span class="eq-n">(9.2)</span>
+  </div>
+
+  <p>
+    解出来是 <span class="eq-inline">w* ∝ Σ⁻¹μ</span>。漂亮，但实战中经常灾难性失败。
+    原因只有一个：<strong>它把估计误差当成了真实信号</strong>。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 272" role="img" aria-label="有效前沿与估计误差">
+        <line x1="70" y1="240" x2="620" y2="240" stroke="#d8d2c3"/>
+        <line x1="70" y1="30" x2="70" y2="240" stroke="#d8d2c3"/>
+        <text x="298" y="264" font-family="monospace" font-size="9.5" fill="#79818b">波动率 σ →</text>
+        <text x="70" y="20" font-family="monospace" font-size="9.5" fill="#79818b">预期收益 μ ↑</text>
+
+        <path d="M120 226 C180 150 280 100 420 78 C500 68 570 64 612 62"
+              fill="none" stroke="#1d3f63" stroke-width="2"/>
+        <text x="612" y="80" font-family="sans-serif" font-size="10.5" fill="#1d3f63" text-anchor="end">真实有效前沿</text>
+
+        <path d="M140 236 C220 118 330 56 470 38 C530 32 580 30 615 28"
+              fill="none" stroke="#b0512f" stroke-width="1.7" stroke-dasharray="5 4"/>
+        <text x="615" y="20" font-family="sans-serif" font-size="10.5" fill="#b0512f" text-anchor="end">用估计值算出的「前沿」</text>
+
+        <circle cx="200" cy="178" r="4" fill="#9c7418"/>
+        <circle cx="262" cy="140" r="4" fill="#9c7418"/>
+        <circle cx="340" cy="110" r="4" fill="#9c7418"/>
+        <text x="208" y="194" font-family="monospace" font-size="9" fill="#9c7418">真实组合</text>
+
+        <text x="80" y="44" font-family="sans-serif" font-size="10" fill="#a8aeb6">估计误差把整条前沿推高、推左</text>
+      </svg>
+    </div>
+    <figcaption><b>图 9-1</b>　用历史数据估计 μ 和 Σ，再把它们代入优化器，等于把噪声当成信号。估计出的「前沿」几乎总是优于真实前沿——不是因为你厉害，是因为误差站在你这边。</figcaption>
+  </figure>
+
+  <div class="box warn">
+    <div class="box-label">误差最大化器</div>
+    <p>
+      Michaud 把均值-方差优化称为「误差最大化器」（error maximizer）。
+      原因：优化器会<strong>超配那些被高估收益、低估风险的资产</strong>，
+      而估计误差恰好让某些资产看起来「高收益低风险」。结果你买到的是噪声，不是 alpha。
+    </p>
+  </div>
+
+  <h3>三个补救办法</h3>
+
+  <ol>
+    <li><strong>不要优化 μ。</strong>用等权、风险平价、或简单的打分权重，只优化风险。</li>
+    <li><strong>收缩协方差矩阵。</strong>Ledoit-Wolf 收缩把样本协方差向结构化矩阵拉，降低估计误差。</li>
+    <li><strong>加约束。</strong>单资产上限、行业中性、换手约束。约束越强，优化器越难「发挥想象力」。</li>
+  </ol>
+
+  <h2><span class="h2-n">9.3</span>风险平价：不预测收益的配置</h2>
+
+  <p>
+    风险平价（Risk Parity）的核心思想是：<strong>不猜收益，只分配风险</strong>。
+    每个资产对组合总风险的贡献相等。这样你不需要估计 μ，只需要估计 Σ——而 Σ 的估计误差小得多。
+  </p>
+
+  <p>
+    风险贡献的定义是：
+  </p>
+
+  <div class="math">
+    RC<sub>i</sub> = w<sub>i</sub> · (Σw)<sub>i</sub> / √(wᵀΣw)
+    <span class="eq-n">(9.3)</span>
+  </div>
+
+  <p>
+    目标是让所有 RC<sub>i</sub> 相等。这个问题没有解析解，但可以用迭代法快速求解：
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>risk_parity.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+
+
+def risk_contributions(w: np.ndarray, cov: np.ndarray) -&gt; np.ndarray:
+    port_var = w @ cov @ w
+    marginal = cov @ w
+    return w * marginal / np.sqrt(port_var)
+
+
+def erc_weights(cov: np.ndarray, iters: int = 500, tol: float = 1e-10) -&gt; np.ndarray:
+    """等风险贡献（Equal Risk Contribution）权重，用循环坐标下降求解。"""
+    n = cov.shape[0]
+    w = np.ones(n) / n
+    for _ in range(iters):
+        prev = w.copy()
+        for i in range(n):
+            # 目标：RC_i = σ / n，即 w_i·(Σw)_i = σ² / n
+            target = (w @ cov @ w) / n
+            a = cov[i, i]
+            b = (cov[i] @ w) - cov[i, i] * w[i]
+            # 解 a·w_i² + b·w_i − target = 0，取正根
+            disc = b * b + 4 * a * target
+            w[i] = (-b + np.sqrt(max(disc, 0))) / (2 * a)
+        w = np.clip(w, 0, None)
+        w /= w.sum()
+        if np.max(np.abs(w - prev)) &lt; tol:
+            break
+    return w
+
+
+def portfolio_vol(w: np.ndarray, cov: np.ndarray) -&gt; float:
+    return float(np.sqrt(w @ cov @ w))</code></pre>
+  </div>
+
+  <div class="box idea">
+    <div class="box-label">风险平价的隐含杠杆</div>
+    <p>
+      债券波动低，股票波动高。要让两者风险贡献相等，债券的权重会非常大（可能 80%）。
+      为了让整体收益可接受，通常会对整个组合加杠杆。这就是「风险平价基金」的典型结构。
+      对个人来说，<strong>不加杠杆的风险平价</strong>依然有意义：它会让你的组合更稳，
+      只是收益也会更低。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">9.4</span>波动率目标化：让曲线变平滑</h2>
+
+  <p>
+    这是实战中最有用的技术之一，原理简单到一句话：
+    <strong>波动高的时候减仓，波动低的时候加仓，让组合的波动率保持恒定</strong>。
+  </p>
+
+  <div class="math">
+    w<sub>t</sub> = min( L<sub>max</sub> , σ<sub>target</sub> / σ̂<sub>t</sub> )
+    <span class="eq-n">(9.4)</span>
+  </div>
+
+  <p>
+    假设目标波动 10%，当前估计波动 20%，则仓位系数 = 0.5。
+    如果波动降到 8%，系数 = 1.25（但受最大杠杆限制）。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>vol_target.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def vol_target_returns(returns: pd.Series, target: float = 0.10,
+                       halflife: int = 20, max_leverage: float = 2.0,
+                       periods: int = 252) -&gt; pd.Series:
+    """对单策略做波动率目标化。returns 为日频策略收益。"""
+    vol = returns.ewm(halflife=halflife, adjust=False).std() * np.sqrt(periods)
+    scale = (target / vol).clip(upper=max_leverage)
+    scale = scale.shift(1)          # 用昨天的波动决定今天的仓位，避免前视
+    return returns * scale
+
+
+def compare(returns: pd.Series):
+    raw = returns.dropna()
+    vt = vol_target_returns(returns).dropna()
+    out = pd.DataFrame({
+        "raw": [raw.mean() * 252, raw.std() * np.sqrt(252),
+                raw.mean() / raw.std() * np.sqrt(252)],
+        "vol_target": [vt.mean() * 252, vt.std() * np.sqrt(252),
+                       vt.mean() / vt.std() * np.sqrt(252)],
+    }, index=["ann_ret", "ann_vol", "sharpe"])
+    return out</code></pre>
+  </div>
+
+  <p>
+    波动率目标化的效果通常是：<strong>收益略降，波动大幅降，夏普上升，最大回撤显著改善</strong>。
+    它不创造 alpha，但它让同样的 alpha 变得更容易持有。
+  </p>
+
+  <div class="box note">
+    <div class="box-label">一个副作用</div>
+    <p>
+      波动率目标化在危机初期会自动减仓，这很好；但当波动率突然飙升又迅速回落时，
+      它会在低点减仓、高点加仓，产生「波动率陷阱」损耗。
+      解决办法：对波动率估计做平滑，或者设置调仓阈值（变化超过 20% 才调整）。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">9.5</span>风险度量：VaR、CVaR 与压力测试</h2>
+
+  <h3>VaR：在 95% 置信度下，我最多亏多少？</h3>
+
+  <div class="math">
+    VaR<sub>α</sub> = −Quantile<sub>1−α</sub>(R)
+    <span class="eq-n">(9.5)</span>
+  </div>
+
+  <p>
+    VaR 的问题是：它只告诉你「阈值在哪」，不告诉你「超过阈值会有多惨」。
+    而且它不满足次可加性——两个 VaR 为 100 的组合，合并后 VaR 可能大于 200。
+  </p>
+
+  <h3>CVaR：超过阈值后的平均损失</h3>
+
+  <div class="math">
+    CVaR<sub>α</sub> = −E[ R | R &lt; −VaR<sub>α</sub> ]
+    <span class="eq-n">(9.6)</span>
+  </div>
+
+  <p>
+    CVaR（也叫 Expected Shortfall）衡量尾部损失的期望值，是更稳健的风险度量。
+    监管机构（巴塞尔协议）已经从 VaR 转向 CVaR。
+  </p>
+
+  <h3>压力测试：不看历史，看假设</h3>
+
+  <p>
+    VaR 和 CVaR 都基于历史分布，而历史不会重复。压力测试问的是：
+    <strong>如果发生 X，我会怎样？</strong>
+  </p>
+
+  <ul>
+    <li><strong>历史情景</strong>：2008 金融危机、2015 股灾、2020 年 3 月、2022 年加息。</li>
+    <li><strong>假设情景</strong>：股指单日 −10%、利率 +200bps、相关性全部升到 0.9。</li>
+    <li><strong>反向压力测试</strong>：什么情况下我会亏掉 50%？（然后问这个情况有多可能）</li>
+  </ul>
+
+  <div class="box warn">
+    <div class="box-label">相关性假设是压力测试的核心</div>
+    <p>
+      大多数风险模型在正常时期表现良好，在危机时期集体失效，因为它们假设相关性稳定。
+      压力测试时，应该<strong>手动把相关性调高</strong>（比如全部设为 0.8），
+      再看组合的损失。这比任何 VaR 模型都更接近真相。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">9.6</span>尾部与凸性：为最坏的情况付费</h2>
+
+  <p>
+    如果你的策略是负偏的（卖期权、carry、杠杆套利），你需要一些「凸性」来对冲尾部。
+    常见做法：
+  </p>
+
+  <ul>
+    <li><strong>买入虚值看跌期权</strong>：成本是持续的保费，收益是危机时的爆发。</li>
+    <li><strong>持有少量趋势策略</strong>：趋势策略在危机中往往正收益（因为跌势持续）。</li>
+    <li><strong>保留现金</strong>：最朴素的凸性，代价是机会成本。</li>
+  </ul>
+
+  <p>
+    这类对冲在 90% 的时间里都在亏钱，只有在 10% 的时间里救命。
+    它的心理难度极高——你会在连续亏损 18 个月后想放弃它，而那往往是它最该被保留的时候。
+  </p>
+
+  <h2><span class="h2-n">9.7</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用样本协方差直接做均值-方差优化。</li>
+    <li>以为「持有 50 只股票」就是分散。</li>
+    <li>用长期平均相关性做风险模型，忽略危机时的相关性上升。</li>
+    <li>波动率目标化时用了当天的波动率（前视）。</li>
+    <li>把 VaR 当成「最大可能损失」。</li>
+    <li>压力测试只跑历史情景，不做假设情景。</li>
+    <li>在负偏策略上不加尾部对冲，还加杠杆。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>erc_weights</code> 对 5 个资产（股票、债券、黄金、商品、现金）求权重，与等权对比波动率。</li>
+      <li>对一个策略做波动率目标化，比较原始与目标化后的夏普、最大回撤、以及年化换手。</li>
+      <li>计算你组合的 VaR 和 CVaR（95%），然后手动把所有相关性设为 0.8，重算一次。</li>
+      <li>设计一个反向压力测试：什么情景会让你的组合亏 40%？这个情景的概率有多大？</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>分散的极限由相关性决定，不由资产数量决定。</li>
+      <li>均值-方差优化是误差放大器；实战应避免优化 μ，多用风险平价或简单权重。</li>
+      <li>风险平价只依赖协方差，估计误差更小，是更稳健的配置方法。</li>
+      <li>波动率目标化不创造 alpha，但能让 alpha 更容易被持有。</li>
+      <li>VaR 不描述尾部，CVaR 更稳健；压力测试必须包含相关性上升的情景。</li>
+      <li>负偏策略需要凸性对冲，而凸性对冲在大多数时候都在亏钱。</li>
+    </ul>
+  </div>
+</section>

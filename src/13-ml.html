@@ -1,0 +1,364 @@
+<section class="chapter" id="ch12">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 12 · 第四部 修炼</div>
+    <h1 class="ch-title">机器学习<br>机会与幻觉</h1>
+    <p class="ch-abs">
+      机器学习在金融里既被高估，也被低估。被高估的是「模型能发现规律」，
+      被低估的是「特征工程和验证设计决定一切」。
+      这一章不讲调参，讲三件事：金融数据的特殊性、标签怎么造、以及为什么交叉验证在这里会骗你。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>42 分钟</b></span>
+      <span>难度 <b>进阶</b></span>
+      <span>代码 <b>Purged GBDT</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    在图像识别里，你有百万张标注图片，规律是稳定的，信噪比很高。
+    在金融里，你只有几千个样本，规律在变，信噪比低到 0.05。
+    把 ImageNet 的方法直接搬过来，你会得到极高的训练集准确率，和归零的实盘收益。
+  </p>
+
+  <p>
+    但机器学习仍然有价值——不是因为它能「预测价格」，而是因为它擅长
+    <strong>在高维、非线性、有交互的数据里找微弱的统计规律</strong>。前提是，你必须诚实地设计验证。
+  </p>
+
+  <h2><span class="h2-n">12.1</span>金融数据的四个特殊性</h2>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>① 信噪比极低</h4>
+      <p>日频收益的可预测部分通常小于 5%。R² = 0.01 已经值得研究。这意味着模型很容易拟合噪声。</p>
+    </div>
+    <div class="card">
+      <h4>② 样本少且不独立</h4>
+      <p>10 年日频数据只有 2500 个点，且高度自相关。有效样本量可能只有几百。</p>
+    </div>
+    <div class="card">
+      <h4>③ 非平稳</h4>
+      <p>市场结构会变：监管、参与者、技术。2015 年有效的规律，2025 年可能反向。</p>
+    </div>
+    <div class="card">
+      <h4>④ 标签有重叠</h4>
+      <p>「未来 20 日收益」在相邻日期之间高度重叠，破坏了交叉验证的独立性假设。</p>
+    </div>
+  </div>
+
+  <p>
+    这四点共同导致一个结论：<strong>在金融里，验证设计比模型选择重要十倍</strong>。
+    一个线性模型 + 正确的 purged CV，通常胜过一个深度网络 + 随机 K 折。
+  </p>
+
+  <h2><span class="h2-n">12.2</span>标签：你到底在预测什么</h2>
+
+  <h3>最朴素：未来收益</h3>
+
+  <div class="math">
+    y<sub>t</sub> = (P<sub>t+h</sub> / P<sub>t</sub>) − 1
+    <span class="eq-n">(12.1)</span>
+  </div>
+
+  <p>
+    问题是：收益分布厚尾，少数极端值会主导损失函数；而且 h 越长，样本越少、越不独立。
+  </p>
+
+  <h3>更好：横截面排序</h3>
+
+  <p>
+    不预测「涨多少」，而预测「比别的股票涨得多」。把 y 转成横截面分位数或 rank，
+    消除了市场整体涨跌的影响，也让分布更接近均匀。
+  </p>
+
+  <h3>更适合交易：三重障碍法</h3>
+
+  <p>
+    López de Prado 提出的 triple barrier：给每个样本设三道障碍——
+    上轨（止盈）、下轨（止损）、时间（到期）。看价格先碰到哪一个，据此打标签。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 268" role="img" aria-label="三重障碍法">
+        <!-- barriers -->
+        <line x1="70" y1="60" x2="610" y2="60" stroke="#2b6a4d" stroke-dasharray="5 4"/>
+        <line x1="70" y1="210" x2="610" y2="210" stroke="#b0512f" stroke-dasharray="5 4"/>
+        <line x1="470" y1="30" x2="470" y2="240" stroke="#9c7418" stroke-dasharray="5 4"/>
+
+        <text x="616" y="64" font-family="monospace" font-size="9" fill="#2b6a4d">+2σ</text>
+        <text x="616" y="214" font-family="monospace" font-size="9" fill="#b0512f">−2σ</text>
+        <text x="440" y="26" font-family="monospace" font-size="9" fill="#9c7418">时间障碍</text>
+
+        <!-- paths -->
+        <path d="M70 135 L120 120 L160 100 L200 82 L240 64 L270 58" fill="none" stroke="#2b6a4d" stroke-width="1.8"/>
+        <circle cx="270" cy="58" r="4" fill="#2b6a4d"/>
+        <text x="278" y="52" font-family="sans-serif" font-size="10" fill="#2b6a4d">label = +1</text>
+
+        <path d="M70 135 L130 150 L190 168 L240 190 L290 212" fill="none" stroke="#b0512f" stroke-width="1.8"/>
+        <circle cx="290" cy="212" r="4" fill="#b0512f"/>
+        <text x="298" y="226" font-family="sans-serif" font-size="10" fill="#b0512f">label = −1</text>
+
+        <path d="M70 135 L140 128 L210 140 L280 132 L350 138 L420 130 L470 136" fill="none" stroke="#79818b" stroke-width="1.8"/>
+        <circle cx="470" cy="136" r="4" fill="#79818b"/>
+        <text x="478" y="132" font-family="sans-serif" font-size="10" fill="#79818b">label = 0</text>
+
+        <text x="70" y="262" font-family="monospace" font-size="9.5" fill="#a8aeb6">t₀</text>
+        <text x="600" y="262" font-family="monospace" font-size="9.5" fill="#a8aeb6">t₀ + h</text>
+      </svg>
+    </div>
+    <figcaption><b>图 12-1</b>　三重障碍法。标签不再是「涨了多少」，而是「先触发了哪个事件」——这更接近真实交易决策，也天然处理了路径依赖。</figcaption>
+  </figure>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>triple_barrier.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def triple_barrier_labels(prices: pd.Series, vol_window: int = 20,
+                          barrier_mult: float = 2.0, horizon: int = 20,
+                          up: float | None = None, down: float | None = None):
+    """返回标签与触碰时间。
+    label: +1 先触上轨, -1 先触下轨, 0 到期未触碰
+    """
+    vol = prices.pct_change().rolling(vol_window).std()
+    labels, touch_idx = [], []
+
+    for i in range(len(prices) - horizon):
+        p0 = prices.iloc[i]
+        sigma = vol.iloc[i]
+        if not np.isfinite(sigma):
+            labels.append(np.nan); touch_idx.append(i)
+            continue
+
+        upper = p0 * (1 + (up if up is not None else barrier_mult * sigma))
+        lower = p0 * (1 - (down if down is not None else barrier_mult * sigma))
+        window = prices.iloc[i + 1: i + 1 + horizon]
+
+        hit_up = window[window &gt;= upper]
+        hit_dn = window[window &lt;= lower]
+        t_up = hit_up.index[0] if len(hit_up) else None
+        t_dn = hit_dn.index[0] if len(hit_dn) else None
+
+        if t_up and (not t_dn or t_up &lt;= t_dn):
+            labels.append(1); touch_idx.append(prices.index.get_loc(t_up))
+        elif t_dn:
+            labels.append(-1); touch_idx.append(prices.index.get_loc(t_dn))
+        else:
+            labels.append(0); touch_idx.append(i + horizon)
+
+    return pd.Series(labels, index=prices.index[:len(labels)]), touch_idx</code></pre>
+  </div>
+
+  <h2><span class="h2-n">12.3</span>特征：从「原始数据」到「信息」</h2>
+
+  <p>
+    特征工程是量化 ML 的核心，模型只是最后一层。好的特征通常来自三个方向：
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:130px;">类别</th><th>例子</th><th>注意</th></tr></thead>
+      <tbody>
+        <tr><td><b>时序特征</b></td><td>过去 N 日收益、波动率、成交量变化、RSI</td><td>必须用 shift 保证只用历史</td></tr>
+        <tr><td><b>横截面特征</b></td><td>行业内排名、市值分位、估值分位</td><td>每个日期内计算，不能跨期</td></tr>
+        <tr><td><b>交互特征</b></td><td>动量 × 波动率、价值 × 质量</td><td>容易过拟合，要有经济逻辑</td></tr>
+        <tr><td><b>另类特征</b></td><td>新闻情绪、搜索指数、供应链</td><td>覆盖率与时点最难处理</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">特征里的三个泄漏源</div>
+    <p>
+      ① 用全样本做标准化（均值、方差包含了未来）；<br>
+      ② 用未来数据填充缺失值（前向填充用错了方向）；<br>
+      ③ 特征的计算窗口跨越了标签期（比如用 t+5 的数据算 t 的特征）。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">12.4</span>验证：为什么随机 K 折会骗你</h2>
+
+  <p>
+    标准 K 折把数据随机分成 K 份，轮流用 K−1 份训练、1 份测试。
+    在图像数据里这没问题，因为样本独立。但在时间序列里，它会造成两种泄漏：
+  </p>
+
+  <ul>
+    <li><strong>未来信息泄漏</strong>：训练集里包含了测试集之后的数据。</li>
+    <li><strong>标签重叠</strong>：相邻样本的标签共享同一段未来收益。</li>
+  </ul>
+
+  <p>
+    结果是：你的交叉验证分数会非常漂亮，实盘一塌糊涂。正确做法是
+    <strong>Purged K-Fold + Embargo</strong>（第八章已给代码），或者直接用 walk-forward。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>ml_pipeline.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+from sklearn.ensemble import HistGradientBoostingRegressor
+
+from purged_cv import purged_splits
+
+
+def cross_sectional_rank(df: pd.DataFrame, col: str) -&gt; pd.Series:
+    """在每个日期内把特征转成 0~1 的分位数，消除量纲与市场整体影响。"""
+    return df.groupby("date")[col].rank(pct=True)
+
+
+def build_features(panel: pd.DataFrame) -&gt; pd.DataFrame:
+    df = panel.sort_values(["symbol", "date"]).copy()
+    g = df.groupby("symbol")
+
+    df["ret_1"] = g["close"].pct_change(1)
+    df["ret_20"] = g["close"].pct_change(20)
+    df["vol_20"] = g["ret_1"].transform(lambda s: s.rolling(20).std())
+    df["volume_ratio"] = df["volume"] / g["volume"].transform(lambda s: s.rolling(20).mean())
+    df["ma_gap"] = df["close"] / g["close"].transform(lambda s: s.rolling(60).mean()) - 1
+
+    # 横截面标准化（每个日期内）
+    for c in ["ret_20", "vol_20", "volume_ratio", "ma_gap"]:
+        df[c + "_cs"] = cross_sectional_rank(df, c)
+
+    # 标签：未来 5 日收益的横截面排名
+    df["fwd_ret"] = g["close"].shift(-5) / df["close"] - 1
+    df["label"] = df.groupby("date")["fwd_ret"].rank(pct=True)
+    return df.dropna()
+
+
+FEATURES = ["ret_1", "ret_20_cs", "vol_20_cs", "volume_ratio_cs", "ma_gap_cs"]
+
+
+def train_with_purged_cv(df: pd.DataFrame, n_splits: int = 5):
+    dates = df["date"].unique()
+    date_idx = {d: i for i, d in enumerate(dates)}
+    df = df.assign(t=df["date"].map(date_idx))
+
+    scores = []
+    for train_t, test_t in purged_splits(len(dates), n_splits,
+                                         label_horizon=5, embargo=2):
+        train = df[df["t"].isin(train_t)]
+        test = df[df["t"].isin(test_t)]
+        if len(train) &lt; 100 or len(test) &lt; 20:
+            continue
+
+        model = HistGradientBoostingRegressor(
+            max_depth=4, max_iter=200, learning_rate=0.05,
+            l2_regularization=1.0, random_state=0,
+        )
+        model.fit(train[FEATURES], train["label"])
+        pred = model.predict(test[FEATURES])
+
+        # 用 Spearman 相关衡量排序能力（IC）
+        ic = pd.Series(pred).corr(pd.Series(test["label"].values), method="spearman")
+        scores.append(ic)
+
+    return np.mean(scores), np.std(scores)</code></pre>
+  </div>
+
+  <div class="output">mean IC 0.0321   std 0.0187
+（IC 0.03 在这个问题里已属可用，但请先确认它不是泄漏造成的）</div>
+
+  <h2><span class="h2-n">12.5</span>模型选择：什么时候用什么</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:130px;">模型</th><th>优势</th><th>劣势</th><th>适用</th></tr></thead>
+      <tbody>
+        <tr><td><b>线性 / Ridge</b></td><td>稳定、可解释、样本需求小</td><td>无法捕捉非线性与交互</td><td>因子合成、基准模型</td></tr>
+        <tr><td><b>GBDT / 树模型</b></td><td>自动处理非线性、缺失值、交互</td><td>容易过拟合、外推能力差</td><td>横截面选股的主力</td></tr>
+        <tr><td><b>神经网络</b></td><td>能学复杂模式、适合大数据</td><td>样本需求大、难解释、易过拟合</td><td>高频、另类数据</td></tr>
+        <tr><td><b>集成</b></td><td>降低方差、提升稳健性</td><td>复杂度上升</td><td>多模型融合</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    在金融里，<strong>简单模型 + 好特征 + 正确验证</strong>，通常打败复杂模型 + 烂验证。
+    因为你的瓶颈不是模型容量，是信噪比。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">正则化就是先验</div>
+    <p>
+      在低信噪比环境里，任何「让模型更灵活」的操作都在增加过拟合风险。
+      L2 正则、浅树、早停、特征少而精——这些约束不是妥协，是<strong>把「简单」作为一种先验</strong>。
+      市场大概率是简单的，只是噪声很大。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">12.6</span>特征重要性 ≠ 因果</h2>
+
+  <p>
+    树模型的特征重要性告诉你「这个特征在训练集里对降低损失有帮助」，
+    不告诉你「它对未来有效」，更不告诉你「它和收益有因果关系」。
+  </p>
+
+  <ul>
+    <li>重要性可能来自<strong>泄漏</strong>（某个特征偷偷包含了未来信息）。</li>
+    <li>重要性可能来自<strong>共线性</strong>（两个特征高度相关，重要性被随机分配给其中一个）。</li>
+    <li>重要性在<strong>不同时间段</strong>可能完全不同（非平稳）。</li>
+  </ul>
+
+  <p>
+    正确做法：用<strong>样本外</strong>的置换重要性（permutation importance），
+    并且分年度看它是否稳定。一个只在 2020 年重要的特征，不值得依赖。
+  </p>
+
+  <h2><span class="h2-n">12.7</span>强化学习：为什么很难落地</h2>
+
+  <p>
+    RL 在游戏里很成功，因为环境可以无限次重置、奖励明确、状态可观测。
+    金融不满足这三条：
+  </p>
+
+  <ul>
+    <li><strong>不能重置</strong>：你只有一条历史路径，样本量有限。</li>
+    <li><strong>奖励有噪声</strong>：赚钱可能是运气，模型会学到错误的行为。</li>
+    <li><strong>部分可观测</strong>：你不知道其他参与者的意图。</li>
+    <li><strong>非平稳</strong>：对手会适应你，市场结构会变。</li>
+  </ul>
+
+  <p>
+    RL 在金融里真正有用的场景，通常是<strong>执行优化</strong>（在模拟器里可以大量试错），
+    而不是「让 AI 自己学会炒股」。
+  </p>
+
+  <h2><span class="h2-n">12.8</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用随机 K 折做时间序列交叉验证。</li>
+    <li>用全样本统计量做特征标准化。</li>
+    <li>标签期与特征窗口重叠，造成泄漏。</li>
+    <li>用训练集的 R² 或准确率评价模型。</li>
+    <li>特征重要性当作因果解释。</li>
+    <li>在只有 2000 个样本的数据上训练深度网络。</li>
+    <li>忽略交易成本，只看预测精度。</li>
+    <li>相信「AI 选股」的黑箱，不做归因。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>triple_barrier_labels</code> 给一只股票打标签，统计三类标签的比例。它平衡吗？</li>
+      <li>把 <code>train_with_purged_cv</code> 的 <code>label_horizon</code> 改成 0（不做 purge），观察 IC 虚高多少。</li>
+      <li>用同一个模型，分别用「随机 K 折」和「purged CV」评估，比较两者的 IC。差距就是泄漏的代价。</li>
+      <li>思考：如果你的模型样本外 IC 是 0.02，扣掉成本后还能赚钱吗？需要多少换手率？</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>金融数据信噪比极低、样本少、非平稳、标签重叠。</li>
+      <li>标签设计比模型选择重要；三重障碍法更贴近交易现实。</li>
+      <li>特征工程的核心是「只用当时可知的信息」。</li>
+      <li>随机 K 折会泄漏；必须用 Purged CV + Embargo 或 walk-forward。</li>
+      <li>简单模型 + 正确验证，通常打败复杂模型 + 错误验证。</li>
+      <li>特征重要性不是因果，必须看样本外稳定性。</li>
+    </ul>
+  </div>
+</section>

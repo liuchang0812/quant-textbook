@@ -1,0 +1,439 @@
+<section class="chapter" id="ch7">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 07 · 第二部 研究</div>
+    <h1 class="ch-title">策略的四种原型</h1>
+    <p class="ch-abs">
+      市面上有成千上万种策略，但剥掉包装之后，它们几乎都落在四个原型里：
+      趋势、回归、套利、做市。每个原型的收益来源不同、失效条件不同、容量也不同。
+      理解原型，你就不需要背诵策略，而是能在需要时自己造一个。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>40 分钟</b></span>
+      <span>难度 <b>中级</b></span>
+      <span>代码 <b>三个最小实现</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    新手最喜欢问：「什么策略最赚钱？」这个问题没有答案，因为策略不是菜谱，是<strong>对某种市场缺陷的下注</strong>。
+    你要先找到缺陷，再设计策略去收割它。而市场的缺陷，本质上只有四类：
+    趋势会延续、价格会回归、同一东西在不同地方价格不同、以及有人急着成交。
+  </p>
+
+  <h2><span class="h2-n">7.1</span>趋势跟踪：赌「惯性」</h2>
+
+  <h3>收益来源</h3>
+
+  <p>
+    趋势跟踪假设：涨的东西会继续涨，跌的东西会继续跌。这个假设在有效市场里不该成立，
+    但现实中它成立，原因有三：
+  </p>
+
+  <ul>
+    <li><strong>行为偏差</strong>：投资者对消息反应不足，然后过度反应，形成延续。</li>
+    <li><strong>资金流</strong>：指数基金、CTA、风险平价基金按规则加仓，形成机械性买盘。</li>
+    <li><strong>宏观周期</strong>：经济扩张与收缩有持续性，商品和利率会走出长趋势。</li>
+  </ul>
+
+  <p>
+    趋势跟踪的典型画像是：<strong>胜率 35%–45%，盈亏比 2–4，最大回撤 20%–30%，
+    大部分年份小赚小亏，少数年份暴赚</strong>。它靠的是「肥尾」——抓住几次大行情。
+  </p>
+
+  <h3>三种实现</h3>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:130px;">方法</th><th>规则</th><th>特点</th></tr></thead>
+      <tbody>
+        <tr><td><b>双均线</b></td><td>快线上穿慢线做多，下穿平仓</td><td>最经典，滞后明显，震荡市反复止损</td></tr>
+        <tr><td><b>突破</b></td><td>价格突破 N 日高点做多</td><td>海龟交易法，趋势启动快，假突破多</td></tr>
+        <tr><td><b>时序动量</b></td><td>过去 12 月收益为正则持有</td><td>学术验证最充分，换手低，适合多资产</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>关键细节：止损与仓位</h3>
+
+  <p>
+    趋势跟踪的收益分布是「多次小亏 + 少数大赚」。这意味着两件事：
+    <strong>止损必须坚决</strong>（否则小亏会变成大亏，破坏分布），
+    <strong>盈利必须让它跑</strong>（否则你砍掉了唯一的收益来源）。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>trend.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def atr(df: pd.DataFrame, n: int = 14) -&gt; pd.Series:
+    """平均真实波幅：衡量波动，用于止损距离与仓位。"""
+    h, l, c = df["high"], df["low"], df["close"]
+    tr = pd.concat([
+        h - l,
+        (h - c.shift()).abs(),
+        (l - c.shift()).abs(),
+    ], axis=1).max(axis=1)
+    return tr.rolling(n).mean()
+
+
+def trend_signal(df: pd.DataFrame, fast: int = 20, slow: int = 60) -&gt; pd.DataFrame:
+    """双均线 + ATR 跟踪止损。返回信号与止损价。"""
+    out = df.copy()
+    out["ma_f"] = out["close"].rolling(fast).mean()
+    out["ma_s"] = out["close"].rolling(slow).mean()
+    out["atr"] = atr(out)
+
+    # 1 = 持多，0 = 空仓
+    out["signal"] = (out["ma_f"] &gt; out["ma_s"]).astype(int)
+
+    # 跟踪止损：入场后记录最高价，止损线 = 最高价 - 2.5 ATR
+    out["peak"] = out["close"].where(out["signal"] == 1).ffill()
+    out["stop"] = out["peak"] - 2.5 * out["atr"]
+    out["exit"] = (out["close"] &lt; out["stop"]) &amp; (out["signal"] == 1)
+
+    out.loc[out["exit"], "signal"] = 0
+    return out
+
+
+def backtest_trend(df: pd.DataFrame, risk_per_trade: float = 0.01,
+                   capital: float = 1_000_000) -&gt; pd.Series:
+    """按 ATR 止损距离计算仓位，逐日盯市。"""
+    df = trend_signal(df)
+    equity = capital
+    pos = 0.0
+    curve = []
+
+    for i in range(1, len(df)):
+        row, prev = df.iloc[i], df.iloc[i - 1]
+
+        # 信号变化时调整仓位
+        if row["signal"] == 1 and pos == 0:
+            stop_dist = 2.5 * row["atr"]
+            if stop_dist &gt; 0:
+                pos = (equity * risk_per_trade) / stop_dist
+        elif row["signal"] == 0 and pos &gt; 0:
+            equity += pos * (row["open"] - prev["close"])
+            pos = 0.0
+
+        if pos &gt; 0:
+            equity += pos * (row["close"] - prev["close"])
+        curve.append(equity)
+
+    return pd.Series(curve, index=df.index[1:])</code></pre>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">趋势跟踪最难受的地方</div>
+    <p>
+      震荡市。价格在两条均线之间来回穿，你连续止损 8 次，每次亏 1%，
+      然后开始怀疑策略。第 9 次信号出现时你不敢进，结果那是全年最大的一波行情。
+      <strong>趋势策略的钱，是在你快要放弃的时候赚到的。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">7.2</span>均值回归：赌「橡皮筋」</h2>
+
+  <h3>收益来源</h3>
+
+  <p>
+    价格偏离价值后会回来。偏离的原因可能是流动性冲击、情绪、指数调整、
+    或者单纯的过度反应。回归策略赚的是「纠偏」的钱。
+  </p>
+
+  <p>
+    它的画像是趋势的反面：<strong>胜率 60%–75%，盈亏比 0.5–1，最大回撤可能很深</strong>。
+    因为「偶尔一次不回归」，会变成巨额亏损。LTCM 就是这么死的。
+  </p>
+
+  <h3>单资产回归：布林带</h3>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>meanrev.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>def bollinger_signal(df: pd.DataFrame, n: int = 20, k: float = 2.0) -&gt; pd.DataFrame:
+    """价格跌破下轨做多，回到中轨平仓；反手做空对称。"""
+    out = df.copy()
+    out["mid"] = out["close"].rolling(n).mean()
+    out["sd"] = out["close"].rolling(n).std()
+    out["upper"] = out["mid"] + k * out["sd"]
+    out["lower"] = out["mid"] - k * out["sd"]
+
+    out["signal"] = 0
+    out.loc[out["close"] &lt; out["lower"], "signal"] = 1     # 超卖做多
+    out.loc[out["close"] &gt; out["upper"], "signal"] = -1    # 超买做空
+
+    # 回到中轨即平仓（用 shift 避免同日前视）
+    out["exit_long"] = out["close"] &gt;= out["mid"]
+    out["exit_short"] = out["close"] &lt;= out["mid"]
+    return out
+
+
+def apply_positions(sig: pd.Series) -&gt; pd.Series:
+    """把离散信号转成持仓：信号出现后持有，直到反向信号或平仓。"""
+    pos = pd.Series(0.0, index=sig.index)
+    current = 0.0
+    for i, s in enumerate(sig):
+        if s != 0:
+            current = s
+        pos.iloc[i] = current
+    return pos</code></pre>
+  </div>
+
+  <h3>配对交易：更纯粹的回归</h3>
+
+  <p>
+    单资产回归的问题是你不知道「均值」在哪。配对交易解决了这个问题：
+    找两个历史上有稳定关系的资产（比如两家同行业公司、ETF 与成分股），
+    当它们的价差偏离历史均值时，做多低估的、做空高估的。
+  </p>
+
+  <p>
+    关键是<strong>协整</strong>（cointegration），不是相关。两个都上涨的股票可以高度相关，
+    但价差可能永远扩大。协整检验的是「价差是否平稳」，这才是可回归的前提。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>pairs.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+from statsmodels.tsa.stattools import coint
+
+
+def find_pairs(prices: pd.DataFrame, pvalue_threshold: float = 0.05):
+    """在候选池里找协整对。prices 的列是标的，行是日期。"""
+    cols = prices.columns
+    results = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            a, b = prices[cols[i]], prices[cols[j]]
+            score, pvalue, _ = coint(a, b)
+            if pvalue &lt; pvalue_threshold:
+                # 用 OLS 估计对冲比率
+                beta = sm.OLS(a, sm.add_constant(b)).fit().params.iloc[1]
+                spread = a - beta * b
+                results.append({
+                    "a": cols[i], "b": cols[j],
+                    "pvalue": pvalue, "beta": beta,
+                    "spread_std": spread.std(),
+                    "half_life": half_life(spread),
+                })
+    return pd.DataFrame(results).sort_values("pvalue")
+
+
+def half_life(spread: pd.Series) -&gt; float:
+    """用 AR(1) 估计均值回归的半衰期（天）。"""
+    lag = spread.shift(1).dropna()
+    delta = spread.diff().dropna()
+    beta = sm.OLS(delta, sm.add_constant(lag)).fit().params.iloc[1]
+    return -np.log(2) / beta if beta &lt; 0 else np.inf
+
+
+def pairs_signal(spread: pd.Series, entry_z: float = 2.0, exit_z: float = 0.5):
+    """z-score 突破入场，回归到均值附近出场。"""
+    z = (spread - spread.rolling(60).mean()) / spread.rolling(60).std()
+    pos = pd.Series(0, index=spread.index)
+    pos[z &gt; entry_z] = -1      # 价差过高：做空 a、做多 b
+    pos[z &lt; -entry_z] = 1      # 价差过低：做多 a、做空 b
+    pos[z.abs() &lt; exit_z] = 0  # 回归平仓
+    return pos.ffill().fillna(0)</code></pre>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">配对交易的真实风险</div>
+    <p>
+      协整关系会断裂。并购、监管变化、技术替代，都会让两家公司「从此不再是同一个东西」。
+      回测里它只是一次 3 个标准差的偏离，实盘里它是 −30% 的亏损。
+      <strong>配对交易必须有基本面止损</strong>：当价差偏离超过历史极值 1.5 倍时，认输离场。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">7.3</span>套利：赚「同一东西的价格差」</h2>
+
+  <p>
+    套利是最接近「无风险」的策略，也正因如此，它的空间最窄、竞争最激烈。
+  </p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>期现套利</h4>
+      <p>股指期货与现货指数的基差。当期货升水超过持有成本，买现货、卖期货，到期收敛获利。</p>
+    </div>
+    <div class="card">
+      <h4>跨期套利</h4>
+      <p>同一品种不同月份合约的价差。近月与远月的价差偏离正常区间时入场。</p>
+    </div>
+    <div class="card">
+      <h4>ETF 折溢价</h4>
+      <p>ETF 二级市场价格与净值（IOPV）的偏离。折价买入、赎回成分股卖出。</p>
+    </div>
+    <div class="card">
+      <h4>统计套利</h4>
+      <p>不是严格无风险，而是「大概率收敛」。配对交易、指数成分替换都属于这一类。</p>
+    </div>
+  </div>
+
+  <p>
+    套利的敌人不是方向判断错误，而是<strong>执行失败</strong>：腿没成交、被强行平仓、
+    流动性消失、或者监管改变规则。所以套利策略的核心能力是工程，不是预测。
+  </p>
+
+  <h2><span class="h2-n">7.4</span>做市：赚「急」的钱</h2>
+
+  <p>
+    做市商同时挂买单和卖单，赚买卖价差。他们的对手是「急着成交的人」。
+    这个生意看起来稳赚，实际上有两个致命风险：
+  </p>
+
+  <ul>
+    <li><strong>库存风险</strong>：你买了很多，价格却一直跌。价差赚了 0.01，库存亏了 0.5。</li>
+    <li><strong>逆向选择</strong>：来跟你成交的人，往往比你知道得更多。你被「选中」了。</li>
+  </ul>
+
+  <p>
+    做市的数学核心是<strong>报价宽度</strong>：太窄，被有毒订单流吃掉；太宽，没人跟你成交。
+    经典的 Glosten-Milgrom 模型和 Avellaneda-Stoikov 模型都在解这个权衡。
+  </p>
+
+  <div class="math">
+    最优半价差 ≈ (1/2) · σ · √( 库存风险厌恶 × 剩余时间 )
+    <span class="eq-n">(7.1)</span>
+  </div>
+
+  <p>
+    对个人来说，做市基本不可行——你需要极低的延迟、极低的费率、以及交易所的返佣。
+    但理解做市，能让你明白<strong>为什么你的市价单总是成交在最差的价位</strong>。
+  </p>
+
+  <h2><span class="h2-n">7.5</span>另外两类：事件与 carry</h2>
+
+  <h3>事件驱动</h3>
+  <p>
+    财报超预期、并购公告、指数成分调整、解禁、回购。事件驱动赚的是
+    「信息扩散需要时间」的钱。它的难点在于：事件的定义、窗口的选择、以及
+    <strong>你凭什么比别人更快地理解这个事件</strong>。
+  </p>
+
+  <h3>Carry</h3>
+  <p>
+    持有高收益资产、卖出低收益资产，赚取息差。外汇里的套息交易、期货里的期限结构
+    （backwardation 做多）、债券里的骑乘，都是 carry。它的风险是「平时慢慢赚，
+    危机时一次性亏光」——典型的负偏策略。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 380" role="img" aria-label="策略原型地图">
+        <line x1="80" y1="300" x2="620" y2="300" stroke="#d8d2c3"/>
+        <line x1="80" y1="40" x2="80" y2="300" stroke="#d8d2c3"/>
+        <line x1="350" y1="40" x2="350" y2="300" stroke="#eee9dc" stroke-dasharray="4 5"/>
+        <line x1="80" y1="170" x2="620" y2="170" stroke="#eee9dc" stroke-dasharray="4 5"/>
+
+        <text x="92" y="56" font-family="monospace" font-size="9" fill="#b3b8be" letter-spacing=".5">高方向性</text>
+        <text x="92" y="292" font-family="monospace" font-size="9" fill="#b3b8be" letter-spacing=".5">低方向性</text>
+        <text x="474" y="318" font-family="monospace" font-size="9" fill="#b3b8be" letter-spacing=".5">持仓周期：短 ←→ 长</text>
+
+        <g font-family="sans-serif" font-size="11.5" text-anchor="middle">
+          <circle cx="140" cy="262" r="6.5" fill="#1d3f63" opacity=".85"/>
+          <text x="140" y="246" fill="#1d3f63">做市</text>
+
+          <circle cx="238" cy="246" r="6.5" fill="#1d3f63" opacity=".85"/>
+          <text x="238" y="230" fill="#1d3f63">套利</text>
+
+          <circle cx="330" cy="200" r="6.5" fill="#b0512f" opacity=".85"/>
+          <text x="330" y="184" fill="#b0512f">统计套利 / 配对</text>
+
+          <circle cx="424" cy="142" r="6.5" fill="#9c7418" opacity=".85"/>
+          <text x="424" y="126" fill="#9c7418">事件驱动</text>
+
+          <circle cx="516" cy="98" r="6.5" fill="#b0512f" opacity=".85"/>
+          <text x="516" y="82" fill="#b0512f">趋势跟踪</text>
+
+          <circle cx="596" cy="66" r="6.5" fill="#2b6a4d" opacity=".85"/>
+          <text x="596" y="50" fill="#2b6a4d">Carry</text>
+        </g>
+
+        <line x1="80" y1="332" x2="620" y2="332" stroke="#e7e2d6"/>
+
+        <g font-family="sans-serif" font-size="10" fill="#4a5158">
+          <circle cx="84" cy="352" r="3.5" fill="#1d3f63"/><text x="94" y="355">做市 · 赚价差 · 容量极大</text>
+          <circle cx="244" cy="352" r="3.5" fill="#1d3f63"/><text x="254" y="355">套利 · 赚价差 · 容量中等</text>
+          <circle cx="404" cy="352" r="3.5" fill="#b0512f"/><text x="414" y="355">配对 · 赚回归 · 容量中等</text>
+          <circle cx="84" cy="370" r="3.5" fill="#9c7418"/><text x="94" y="373">事件 · 赚信息扩散 · 容量小</text>
+          <circle cx="244" cy="370" r="3.5" fill="#b0512f"/><text x="254" y="373">趋势 · 赚延续 · 容量大</text>
+          <circle cx="404" cy="370" r="3.5" fill="#2b6a4d"/><text x="414" y="373">Carry · 赚息差 · 负偏</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption><b>图 7-1</b>　四大原型在「持仓周期 × 方向性暴露」平面上的位置。越靠左下，越依赖基础设施；越靠右上，越依赖判断与耐心。</figcaption>
+  </figure>
+
+  <h2><span class="h2-n">7.6</span>原型的对照表</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>原型</th><th>胜率</th><th>盈亏比</th><th>失效条件</th><th>容量</th><th>个人可行性</th></tr></thead>
+      <tbody>
+        <tr><td><b>趋势</b></td><td>35–45%</td><td>2–4</td><td>长期震荡、波动率崩塌</td><td>大</td><td><span class="pill g">高</span></td></tr>
+        <tr><td><b>回归</b></td><td>60–75%</td><td>0.5–1</td><td>结构性断裂、趋势行情</td><td>中</td><td><span class="pill g">高</span></td></tr>
+        <tr><td><b>套利</b></td><td>80–95%</td><td>0.1–0.3</td><td>价差不再收敛、执行失败</td><td>中</td><td><span class="pill t">中</span></td></tr>
+        <tr><td><b>做市</b></td><td>55–65%</td><td>0.8–1.2</td><td>波动率飙升、有毒订单流</td><td>极大</td><td><span class="pill t">低</span></td></tr>
+        <tr><td><b>事件</b></td><td>50–60%</td><td>1–2</td><td>信息效率提升、监管</td><td>小</td><td><span class="pill g">中高</span></td></tr>
+        <tr><td><b>Carry</b></td><td>70–85%</td><td>0.2–0.5</td><td>危机、汇率突变</td><td>大</td><td><span class="pill t">中</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">7.7</span>陷阱：把 beta 当成 alpha</h2>
+
+  <p>
+    这一节值得反复读。大部分「民间高手」的策略，本质上是：
+  </p>
+
+  <ul>
+    <li>买了一只长期上涨的资产，然后说「我的策略年化 15%」——那是 beta。</li>
+    <li>在小盘股上做动量，然后说「动量有效」——那是规模 + 动量的混合暴露。</li>
+    <li>卖出期权收保费，连续 3 年稳定盈利——那是负偏的 carry，风险还没兑现。</li>
+  </ul>
+
+  <p>
+    检验方法很简单：<strong>把你的策略收益对市场、规模、价值、动量做回归</strong>。
+    如果 α 不显著，你赚的就是风格的钱。这不丢人——风格也能赚钱——
+    但你必须知道自己在赚什么，否则风格反转时你会毫无准备。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">一个提问模板</div>
+    <p>
+      面对任何策略，问四句话：<br>
+      ① 它在赌什么会延续/回归？<br>
+      ② 对手为什么愿意输钱给我？<br>
+      ③ 什么情况下它会连续亏 12 个月？<br>
+      ④ 如果所有人都知道了，它还能赚吗？<br>
+      答不上来第三题，就不要上实盘。
+    </p>
+  </div>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>trend_signal</code> 在沪深 300 指数上跑 2010–2025，统计胜率、盈亏比、最大回撤。它符合 7.1 节的画像吗？</li>
+      <li>把双均线参数从 (20, 60) 改成 (5, 20) 和 (60, 200)，观察收益与换手的变化。参数敏感吗？</li>
+      <li>用 <code>find_pairs</code> 在同行业股票里找 5 对协整关系，画出价差 z-score，观察它们是否真的回归。</li>
+      <li>思考：如果你只能选一个原型做十年，你选哪个？为什么？</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>所有策略最终归入四个原型：趋势、回归、套利、做市，加上事件与 carry 两个变体。</li>
+      <li>趋势靠肥尾，胜率低但盈亏比高；回归靠高频小胜，胜率高但尾部风险大。</li>
+      <li>配对交易的前提是协整，不是相关；必须有基本面止损。</li>
+      <li>套利的核心风险是执行，不是方向。</li>
+      <li>做市赚的是「急」的钱，个人难以竞争，但理解它有助执行。</li>
+      <li>任何策略都要做因子归因，确认你赚的不是 beta。</li>
+    </ul>
+  </div>
+</section>

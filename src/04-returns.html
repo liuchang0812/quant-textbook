@@ -1,0 +1,558 @@
+<section class="chapter" id="ch3">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 03 · 第一部 地基</div>
+    <h1 class="ch-title">收益的语言</h1>
+    <p class="ch-abs">
+      「年化 30%」这句话几乎没有任何信息量。它可能是稳定复利，也可能是三年里两年亏、
+      一年翻倍。要判断一个策略的好坏，你需要一套精确的语言：简单收益与对数收益的区别、
+      三种年化的陷阱、夏普比率在衡量什么、最大回撤为什么比收益更值得关注。
+      这一章建立你的度量衡。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>30 分钟</b></span>
+      <span>难度 <b>中级</b></span>
+      <span>代码 <b>指标库</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    在工程里，如果你不能用数字描述一个系统的行为，你就无法优化它。
+    交易也一样。但交易的麻烦在于：几乎所有直观的指标都会骗人。
+    收益率会被少数几笔极端交易扭曲，波动率会把上涨和下跌同等对待，
+    夏普比率假设收益服从正态分布——而市场最不缺的就是不服从正态分布的时刻。
+  </p>
+
+  <p>
+    所以这一章的目的不是给你一堆公式，而是让你知道<strong>每个数字在什么情况下会撒谎</strong>。
+  </p>
+
+  <h2><span class="h2-n">3.1</span>简单收益与对数收益</h2>
+
+  <p>
+    假设一只股票从 100 涨到 120，再跌回 100。简单收益是 +20% 和 −16.67%，
+    算术平均 +1.67%——但你一分钱没赚。问题出在：<strong>简单收益不能相加</strong>。
+  </p>
+
+  <p>
+    对数收益（log return）解决了这个问题。定义 <span class="eq-inline">r = ln(P₁/P₀)</span>，
+    则上涨时 r = ln(1.2) = 0.1823，下跌时 r = ln(0.8333) = −0.1823，相加正好为 0。
+  </p>
+
+  <div class="math">
+    r<sub>log</sub> = ln(1 + r<sub>simple</sub>) &nbsp;&nbsp;⇔&nbsp;&nbsp; r<sub>simple</sub> = e<sup>r<sub>log</sub></sup> − 1
+    <span class="eq-n">(3.1)</span>
+  </div>
+
+  <p>两者的分工非常明确：</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:120px;">场景</th><th>用哪个</th><th>原因</th></tr></thead>
+      <tbody>
+        <tr><td>跨期累加</td><td>对数收益</td><td>可加性：多期总收益 = 各期对数收益之和</td></tr>
+        <tr><td>跨资产加总</td><td>简单收益</td><td>组合收益 = 各资产收益的加权和（对数收益不成立）</td></tr>
+        <tr><td>统计建模</td><td>对数收益</td><td>更接近对称分布，方差更稳定</td></tr>
+        <tr><td>向人汇报</td><td>简单收益</td><td>「赚了 20%」比「对数收益 0.182」直观</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">小收益率下可以近似</div>
+    <p>
+      当 r 很小时，<span class="eq-inline">ln(1+r) ≈ r − r²/2</span>，两者几乎相等。
+      日收益 ±2% 以内，用哪个都行。但当你计算多年累计收益、或者处理高波动资产（比如加密货币）时，
+      差异会变得巨大：年化 100% 的简单收益，对应 69.3% 的对数收益。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">3.2</span>年化：三种平均，三个答案</h2>
+
+  <p>
+    假设一个策略四年的收益是：+50%、−20%、+30%、+10%。它的「年化收益」是多少？
+    答案是：取决于你问谁。
+  </p>
+
+  <h3>算术平均</h3>
+  <div class="math">(0.5 − 0.2 + 0.3 + 0.1) / 4 = 17.5%</div>
+  <p>
+    这是最乐观的答案，也是基金销售最爱用的。但它对应的是「每年都把收益取出来」的假设，
+    不代表你的资金实际增长。
+  </p>
+
+  <h3>几何平均（CAGR）</h3>
+  <div class="math">
+    [(1.5)(0.8)(1.3)(1.1)]<sup>1/4</sup> − 1 = 14.5%
+    <span class="eq-n">(3.2)</span>
+  </div>
+  <p>
+    这才是你账户真实的年化复合增长率。它永远小于等于算术平均，差距随波动率增大。
+    任何严肃的策略评价都应该用 CAGR。
+  </p>
+
+  <h3>对数平均</h3>
+  <div class="math">
+    exp( mean(ln(1+r<sub>t</sub>)) ) − 1 = 14.5%
+  </div>
+  <p>
+    与 CAGR 完全等价（数学上恒等）。它好在可以直接用日频数据计算，不必等到期末。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">记住这个不等式</div>
+    <p>
+      <strong>算术平均 ≥ 几何平均 ≥ 中位数</strong>（对右偏分布）。
+      当有人告诉你「平均年化 20%」，你要问的第一句话是：「算术还是几何？」
+      第二句是：「最大回撤多少？」
+    </p>
+  </div>
+
+  <h2><span class="h2-n">3.3</span>波动率：风险的第一个近似</h2>
+
+  <p>
+    波动率就是收益率的标准差，通常按年化表示：
+  </p>
+
+  <div class="math">
+    σ<sub>年</sub> = σ<sub>日</sub> × √252
+    <span class="eq-n">(3.3)</span>
+  </div>
+
+  <p>
+    252 是一年的交易日数（A 股约 242，美股约 252，加密资产 365）。
+    这个 √T 缩放来自「独立同分布」假设——它在大样本下近似成立，
+    但在极端行情里会失效，因为波动率本身是聚集的（volatility clustering）。
+  </p>
+
+  <h3>波动率不是恒定的</h3>
+
+  <p>
+    这是新手最容易忽略的一点：波动率会「抱团」。大波动后面跟着大波动，平静后面跟着平静。
+    这就是 GARCH 模型要刻画的现象。实践含义是：
+  </p>
+
+  <ul>
+    <li>用过去 20 天的波动率预测明天，比用过去 3 年更准。</li>
+    <li>但短窗口噪声大，所以通常用 EWMA（指数加权）折中。</li>
+    <li>当波动率突然翻倍时，<strong>你的仓位应该自动减半</strong>——这就是波动率目标化。</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>volatility.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def ewma_vol(returns: pd.Series, halflife: int = 20) -> pd.Series:
+    """指数加权波动率（日频）。halflife 越小，对近期变化越敏感。"""
+    return returns.ewm(halflife=halflife, adjust=False).std() * np.sqrt(252)
+
+
+def realized_vol(returns: pd.Series, window: int = 20) -> pd.Series:
+    """滚动窗口已实现波动率。"""
+    return returns.rolling(window).std() * np.sqrt(252)
+
+
+# 对比：同一段行情，两种估计的差异
+# r = pd.read_parquet("returns.parquet")["close"].pct_change()
+# print(pd.DataFrame({
+#     "ewma20": ewma_vol(r, 20),
+#     "roll20": realized_vol(r, 20),
+# }).tail())</code></pre>
+  </div>
+
+  <h2><span class="h2-n">3.4</span>风险调整收益：谁更会「开同样的车」</h2>
+
+  <p>
+    两个策略，A 年化 15%、波动 10%，B 年化 25%、波动 30%。谁更好？
+    如果只看收益，B 赢；但 B 的波动是 A 的三倍，你为了多赚 10 个点承担了三倍的风险。
+    风险调整收益指标就是用来回答这个问题的。
+  </p>
+
+  <h3>夏普比率</h3>
+
+  <div class="math">
+    Sharpe = (R<sub>p</sub> − R<sub>f</sub>) / σ<sub>p</sub>
+    <span class="eq-n">(3.4)</span>
+  </div>
+
+  <p>
+    每承担一单位波动，获得多少超额收益。它是量化行业最通用的「成绩单」，
+    也是最被滥用的指标。它有三个致命缺陷：
+  </p>
+
+  <ol>
+    <li><strong>它把上涨的波动也当成风险。</strong>一个只涨不跌但涨幅不均的策略，夏普会被压低。</li>
+    <li><strong>它假设正态分布。</strong>如果策略靠卖尾部保险赚钱（平时小赚、偶尔巨亏），夏普会高得离谱，直到爆仓那天。</li>
+    <li><strong>它可以被操纵。</strong>把流动性差的资产按模型估值而不是市价，收益序列会变得平滑，夏普虚高。这就是为什么有些基金「夏普 3」，赎回时却拿不到钱。</li>
+  </ol>
+
+  <h3>索提诺比率</h3>
+
+  <div class="math">
+    Sortino = (R<sub>p</sub> − R<sub>target</sub>) / σ<sub>下行</sub>
+    <span class="eq-n">(3.5)</span>
+  </div>
+
+  <p>
+    只惩罚下行波动。对于收益分布右偏的策略（趋势跟踪、期权买方），索提诺比夏普更公平。
+  </p>
+
+  <h3>卡玛比率</h3>
+
+  <div class="math">
+    Calmar = CAGR / |MaxDD|
+    <span class="eq-n">(3.6)</span>
+  </div>
+
+  <p>
+    每承受 1% 的最大回撤，换来多少年化收益。这是最贴近「投资者体感」的指标——
+    因为回撤是你真实会痛的东西。卡玛大于 1 已经算不错，大于 2 属于优秀。
+  </p>
+
+  <h3>信息比率</h3>
+
+  <div class="math">
+    IR = α / σ(α)
+    <span class="eq-n">(3.7)</span>
+  </div>
+
+  <p>
+    相对于基准的超额收益，除以超额收益的波动。它衡量的是「主动管理能力」的稳定性。
+    量化基金内部常用它来评价一个策略相对于其风险模型的表现。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th>衡量什么</th><th>什么时候会骗你</th></tr></thead>
+      <tbody>
+        <tr><td><b>夏普</b></td><td>单位总波动的超额收益</td><td>厚尾、平滑估值、上涨波动大的策略</td></tr>
+        <tr><td><b>索提诺</b></td><td>单位下行波动的超额收益</td><td>样本期没有大跌时，下行波动被低估</td></tr>
+        <tr><td><b>卡玛</b></td><td>收益 / 最大回撤</td><td>回撤只取了一个点，样本短时不稳定</td></tr>
+        <tr><td><b>IR</b></td><td>超额收益的稳定性</td><td>基准选择不当会扭曲结论</td></tr>
+        <tr><td><b>胜率</b></td><td>盈利交易占比</td><td>完全忽略盈亏比，单独看毫无意义</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">3.5</span>回撤：唯一真正会让你出局的指标</h2>
+
+  <p>
+    最大回撤（Maximum Drawdown）是从历史最高点到之后最低点的跌幅：
+  </p>
+
+  <div class="math">
+    MDD = max<sub>t</sub> [ (peak<sub>t</sub> − trough<sub>t</sub>) / peak<sub>t</sub> ]
+    <span class="eq-n">(3.8)</span>
+  </div>
+
+  <p>
+    但最大回撤只是故事的一部分。同样重要的还有两个数字：
+    <strong>回撤持续了多久</strong>（underwater duration），以及<strong>多久才创新高</strong>（recovery time）。
+    一个 −20% 但三个月就恢复的回撤，和一个 −15% 但持续三年的回撤，对投资者的心理折磨完全不同。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 300" role="img" aria-label="资金曲线与水下回撤图">
+        <!-- upper: equity -->
+        <g>
+          <line x1="50" y1="20" x2="50" y2="170" stroke="#e7e2d6"/>
+          <line x1="50" y1="170" x2="630" y2="170" stroke="#e7e2d6"/>
+          <path d="M50 150 L90 138 L120 145 L160 118 L195 105 L230 112 L265 86 L300 72 L330 80 L360 60 L390 66 L420 48 L455 58 L490 40 L525 52 L560 34 L600 42 L630 28"
+                fill="none" stroke="#1d3f63" stroke-width="2"/>
+
+          <!-- peak to trough highlight -->
+          <circle cx="390" cy="66" r="3" fill="#1d3f63"/>
+          <circle cx="455" cy="58" r="3" fill="#1d3f63"/>
+          <line x1="455" y1="58" x2="455" y2="170" stroke="#b0512f" stroke-dasharray="3 3"/>
+          <text x="398" y="88" font-family="monospace" font-size="9.5" fill="#79818b">前高</text>
+          <text x="462" y="100" font-family="monospace" font-size="9.5" fill="#b0512f">回撤低点</text>
+        </g>
+
+        <!-- lower: underwater -->
+        <g>
+          <line x1="50" y1="200" x2="630" y2="200" stroke="#d8d2c3"/>
+          <path d="M50 200 L90 200 L120 200 L160 200 L195 200 L230 200 L265 200 L300 200 L330 200 L360 200 L390 200 L420 200 L455 200 L490 200 L525 200 L560 200 L600 200 L630 200"
+                fill="none" stroke="#1d3f63" stroke-width="1" opacity=".25"/>
+          <path d="M50 200 L90 200 L120 206 L160 200 L195 200 L230 204 L265 200 L300 200 L330 200 L360 200 L390 200 L420 208 L455 236 L490 218 L525 210 L560 200 L600 200 L630 200 L630 200 L50 200 Z"
+                fill="#b0512f" fill-opacity=".13" stroke="#b0512f" stroke-width="1.6"/>
+          <text x="410" y="256" font-family="monospace" font-size="9.5" fill="#b0512f">−12.4%</text>
+          <text x="52" y="192" font-family="monospace" font-size="9" fill="#a8aeb6">0%</text>
+        </g>
+
+        <text x="50" y="290" font-family="sans-serif" font-size="11" fill="#79818b">上：资金曲线　下：水下曲线（距离前高的百分比）</text>
+      </svg>
+    </div>
+    <figcaption><b>图 3-1</b>　水下曲线（underwater curve）是观察回撤的最佳方式。它把「痛苦」画成了面积——面积越大、越深、越宽，投资者越可能在最坏的时刻放弃。</figcaption>
+  </figure>
+
+  <p>
+    关于回撤，有一个经验关系值得记住：<strong>回撤越深，回本需要的涨幅越夸张</strong>。
+    亏 10% 要涨 11.1%，亏 30% 要涨 42.9%，亏 50% 要涨 100%，亏 80% 要涨 400%。
+    这就是为什么风险管理的首要目标不是「多赚」，而是「别亏大」。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">回撤的心理阈值</div>
+    <p>
+      研究表明，大多数投资者在回撤 20%–25% 时开始出现非理性行为（赎回、砍仓、加杠杆赌回来）。
+      这意味着：<strong>如果你的策略历史最大回撤是 30%，你大概率拿不住它。</strong>
+      选择策略时，要选「回撤在你心理承受范围内」的那个，而不是收益最高的那个。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">3.6</span>分布的形状：偏度与峰度</h2>
+
+  <p>
+    正态分布由均值 and 方差两个参数完全决定。但真实收益分布有第三个和第四个特征：
+  </p>
+
+  <ul>
+    <li><strong>偏度（skewness）</strong>：分布不对称的程度。负偏 = 左尾长 = 偶尔巨亏。卖期权、做空波动率的策略都是负偏。</li>
+    <li><strong>峰度（kurtosis）</strong>：尾部的厚度。超额峰度 &gt; 0 表示极端值比正态分布更频繁。股票日收益的超额峰度通常在 3–10 之间。</li>
+  </ul>
+
+  <p>
+    这两个数字之所以重要，是因为它们决定了<strong>「平均」是否可信</strong>。
+    一个负偏、高峰度的策略，可能连续 300 天每天赚 0.05%，然后在第 301 天亏掉 40%。
+    它的夏普比率会非常漂亮，因为夏普完全看不见那个 −40%。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">一个判断练习</div>
+    <p>
+      看到一条几乎笔直向上的资金曲线，先别羡慕。问三个问题：
+      ① 它的收益是不是集中在少数几天？② 它有没有在极端行情里交易过？③ 它的估值是市价还是模型价？
+      三个问题里有一个答不上来，这条曲线就不可信。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">3.7</span>相关性：分散的数学</h2>
+
+  <p>
+    两个资产的组合波动率不是各自波动率的平均，而是：
+  </p>
+
+  <div class="math">
+    σ<sub>p</sub>² = w₁²σ₁² + w₂²σ₂² + 2w₁w₂ρσ₁σ₂
+    <span class="eq-n">(3.9)</span>
+  </div>
+
+  <p>
+    当 ρ = 1，波动率线性相加，分散无效；当 ρ = 0，波动率按平方和开根号，
+    两个同波动率的资产各占一半，组合波动率降到原来的 70.7%；当 ρ = −1，理论上可以完全消除波动。
+  </p>
+
+  <p>
+    但这里有一个残酷的现实：<strong>相关性在危机时会趋近于 1</strong>。
+    平时不相关的资产，在流动性危机里会一起被抛售，因为它们变成了同一个东西——「需要卖掉的资产」。
+    2008 年、2020 年 3 月、2022 年，都上演过这一幕。
+  </p>
+
+  <div class="box note">
+    <div class="box-label">实践含义</div>
+    <p>
+      用长期平均相关性做风险模型，会系统性低估尾部风险。
+      稳健的做法是：同时看「正常时期相关性」和「压力时期相关性」，
+      并在仓位设计里假设后者才是真的。这也是第九章压力测试的起点。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">3.8</span>实验室：同样的夏普，不同的体感</h2>
+
+  <p>
+    下面这个模拟器用几何布朗运动生成 5 年的日频收益。固定年化收益，调整波动率，
+    观察夏普、最大回撤、以及回撤持续时间的变化。
+  </p>
+
+  <div class="widget" data-widget="metrics">
+    <div class="widget-head">
+      <span class="widget-title">实验 3-1 · 风险指标实验室</span>
+      <span class="widget-tag">SIMULATION</span>
+    </div>
+    <div class="widget-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label>年化收益 μ <span class="val" data-out="mu">12%</span></label>
+          <input type="range" data-in="mu" min="-10" max="40" value="12" step="1">
+        </div>
+        <div class="ctrl">
+          <label>年化波动 σ <span class="val" data-out="sig">18%</span></label>
+          <input type="range" data-in="sig" min="5" max="60" value="18" step="1">
+        </div>
+        <div class="ctrl">
+          <label>模拟年数 <span class="val" data-out="yrs">5</span></label>
+          <input type="range" data-in="yrs" min="2" max="15" value="5" step="1">
+        </div>
+        <div class="readouts" style="grid-template-columns:1fr 1fr;">
+          <div class="readout"><div class="k">夏普</div><div class="v" data-out="sharpe">0.67</div></div>
+          <div class="readout"><div class="k">最大回撤</div><div class="v bad" data-out="mdd">—</div></div>
+          <div class="readout"><div class="k">CAGR</div><div class="v" data-out="cagr">—</div></div>
+          <div class="readout"><div class="k">回撤时长</div><div class="v" data-out="dur">—</div></div>
+        </div>
+      </div>
+      <div>
+        <canvas data-canvas="metrics" width="600" height="320"></canvas>
+        <div class="widget-note" data-out="mnote">蓝线为资金曲线，红色阴影为水下回撤。</div>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    试着把波动率从 18% 拉到 40%，保持收益不变。你会看到夏普线性下降，
+    但最大回撤的恶化远不止线性——它是指数级的体感差异。这就是为什么「降波动」
+    在实战中往往比「提收益」更有效。
+  </p>
+
+  <h2><span class="h2-n">3.9</span>动手：一个够用的指标库</h2>
+
+  <p>
+    这段代码值得存下来，后面每一章都会用到。它刻意写得很直白，方便你改。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>metrics.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def to_returns(equity: pd.Series) -> pd.Series:
+    return equity.pct_change().dropna()
+
+
+def cagr(equity: pd.Series, periods_per_year: int = 252) -> float:
+    """复合年化增长率。用首尾净值计算，不受中间波动干扰。"""
+    n = len(equity) / periods_per_year
+    if n &lt;= 0 or equity.iloc[0] &lt;= 0:
+        return np.nan
+    return (equity.iloc[-1] / equity.iloc[0]) ** (1 / n) - 1
+
+
+def ann_vol(returns: pd.Series, periods_per_year: int = 252) -> float:
+    return returns.std() * np.sqrt(periods_per_year)
+
+
+def sharpe(returns: pd.Series, rf: float = 0.0, periods_per_year: int = 252) -> float:
+    excess = returns - rf / periods_per_year
+    sd = excess.std()
+    return np.nan if sd == 0 else excess.mean() / sd * np.sqrt(periods_per_year)
+
+
+def sortino(returns: pd.Series, rf: float = 0.0, periods_per_year: int = 252) -> float:
+    excess = returns - rf / periods_per_year
+    downside = excess[excess &lt; 0].std()
+    return np.nan if downside == 0 else excess.mean() / downside * np.sqrt(periods_per_year)
+
+
+def drawdown_series(equity: pd.Series) -> pd.Series:
+    """水下曲线：当前净值相对历史最高点的跌幅（负数）。"""
+    peak = equity.cummax()
+    return equity / peak - 1
+
+
+def max_drawdown(equity: pd.Series) -> float:
+    return drawdown_series(equity).min()
+
+
+def drawdown_stats(equity: pd.Series) -> dict:
+    """最大回撤 + 最长水下时间（交易日）。"""
+    dd = drawdown_series(equity)
+    mdd = dd.min()
+    trough = dd.idxmin()
+    peak = equity.loc[:trough].idxmax()
+    recovery = equity.loc[trough:][equity.loc[trough:] &gt;= equity.loc[peak]]
+
+    longest, current = 0, 0
+    for v in dd:
+        current = current + 1 if v &lt; 0 else 0
+        longest = max(longest, current)
+
+    return {
+        "max_drawdown": mdd,
+        "peak": peak,
+        "trough": trough,
+        "recovery": recovery.index[0] if len(recovery) else None,
+        "underwater_days": longest,
+    }
+
+
+def summary(equity: pd.Series) -> pd.Series:
+    r = to_returns(equity)
+    dd = drawdown_stats(equity)
+    return pd.Series({
+        "CAGR": cagr(equity),
+        "Vol": ann_vol(r),
+        "Sharpe": sharpe(r),
+        "Sortino": sortino(r),
+        "MaxDD": dd["max_drawdown"],
+        "Calmar": cagr(equity) / abs(dd["max_drawdown"]) if dd["max_drawdown"] else np.nan,
+        "UnderwaterDays": dd["underwater_days"],
+    })</code></pre>
+  </div>
+
+  <p>跑一下：</p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>demo.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np, pandas as pd
+from metrics import summary
+
+rng = np.random.default_rng(42)
+r = pd.Series(rng.normal(0.0005, 0.011, 1260))   # 5 年日频
+eq = (1 + r).cumprod()
+
+print(summary(eq).round(4))</code></pre>
+  </div>
+
+  <div class="output">CAGR              0.1093
+Vol               0.1747
+Sharpe            0.6792
+Sortino           0.9411
+MaxDD            -0.2183
+Calmar            0.5006
+UnderwaterDays    187.0000
+dtype: float64</div>
+
+  <div class="box note">
+    <div class="box-label">一个实现细节</div>
+    <p>
+      <code>drawdown_stats</code> 里查找 recovery 的写法用了布尔索引，在长序列上会慢。
+      生产环境建议用 <code>np.argmax</code> 找到第一个 True 的位置，或者直接用累计最大值做向量化。
+      这类「能跑但不够快」的代码，在回测里会被调用几十万次，值得优化。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">3.10</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用算术平均汇报收益，把 17.5% 说成「年化」。</li>
+    <li>只看夏普，不看偏度和回撤。</li>
+    <li>用日波动率 × √252 去估计包含极端行情的年度风险。</li>
+    <li>把「最大回撤」当成「未来最大回撤」。历史极值只是下限，不是上限。</li>
+    <li>在样本期没有危机的情况下，相信「低相关性」能保护你。</li>
+    <li>忽略回撤持续时间——它比深度更能摧毁投资者的执行力。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>metrics.py</code> 计算沪深 300 近 10 年的 CAGR、夏普、最大回撤，并与「买入持有」对比。</li>
+      <li>构造两个策略：A 每月稳定赚 1%；B 每年 11 个月小亏、1 个月大涨，总收益相同。比较两者的夏普和最大回撤，你更愿意持有哪个？</li>
+      <li>把实验 3-1 的波动率固定为 25%，收益从 5% 调到 25%，记录最大回撤的变化。它随收益线性变化吗？为什么？</li>
+      <li>写一个函数，计算任意策略的「回撤恢复时间分布」，并画出直方图。</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>对数收益可加，简单收益可加权；跨期用对数，跨资产用简单。</li>
+      <li>算术平均 ≥ 几何平均；只有 CAGR 代表你账户的真实增长。</li>
+      <li>波动率聚集，必须用 EWMA 或 GARCH 类方法动态估计。</li>
+      <li>夏普有三大缺陷：惩罚上涨、假设正态、可被平滑估值操纵。</li>
+      <li>回撤的深度、持续时间、恢复时间，共同决定你能否拿住一个策略。</li>
+      <li>相关性在危机时趋近 1，分散化没有你想象的那么可靠。</li>
+    </ul>
+  </div>
+</section>

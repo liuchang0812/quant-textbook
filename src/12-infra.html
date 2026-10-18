@@ -1,0 +1,385 @@
+<section class="chapter" id="ch11">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 11 · 第三部 工程</div>
+    <h1 class="ch-title">实盘系统</h1>
+    <p class="ch-abs">
+      回测是理想世界，实盘是分布式系统。你会遇到重复下单、断线重连、部分成交、
+      行情延迟、券商接口抽风、以及凌晨三点的告警电话。
+      这一章讲怎么造一个「出错时不会亏大钱」的系统——重点不是功能，是失效模式。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>38 分钟</b></span>
+      <span>难度 <b>进阶</b></span>
+      <span>代码 <b>风控骨架</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    2012 年 8 月 1 日，Knight Capital 部署了一段新代码，在一台服务器上忘记更新。
+    开盘 45 分钟内，系统发出了数百万笔错误订单，亏损 4.4 亿美元，公司当晚破产。
+    这不是模型问题，是<strong>部署流程</strong>问题。
+  </p>
+
+  <p>
+    交易系统的第一原则不是「赚钱」，是<strong>「不能因为 bug 而破产」</strong>。
+    所有设计都应该围绕这个原则：假设每个组件都会失败，然后让失败变得可承受。
+  </p>
+
+  <h2><span class="h2-n">11.1</span>架构：六个组件</h2>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 268" role="img" aria-label="实盘系统架构">
+        <defs>
+          <marker id="a2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#a8aeb6"/>
+          </marker>
+          <marker id="a3" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#b0512f"/>
+          </marker>
+        </defs>
+
+        <g font-family="sans-serif" font-size="10.5" text-anchor="middle">
+          <rect x="24" y="46" width="120" height="48" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="84" y="66" fill="#1b2027">行情</text>
+          <text x="84" y="82" fill="#79818b" font-size="9">实时 / 快照</text>
+
+          <rect x="174" y="46" width="120" height="48" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="234" y="66" fill="#1b2027">信号引擎</text>
+          <text x="234" y="82" fill="#79818b" font-size="9">模型 / 因子</text>
+
+          <rect x="324" y="46" width="120" height="48" rx="6" fill="#fdf6f1" stroke="#e0bda9"/>
+          <text x="384" y="66" fill="#b0512f">风控</text>
+          <text x="384" y="82" fill="#a97a63" font-size="9">硬约束 / 熔断</text>
+
+          <rect x="474" y="46" width="120" height="48" rx="6" fill="#fdf6f1" stroke="#e0bda9"/>
+          <text x="534" y="66" fill="#b0512f">订单管理 OMS</text>
+          <text x="534" y="82" fill="#a97a63" font-size="9">状态机 / 幂等</text>
+
+          <rect x="474" y="178" width="120" height="48" rx="6" fill="#f5faf7" stroke="#b9d3c2"/>
+          <text x="534" y="198" fill="#2b6a4d">券商 / 交易所</text>
+          <text x="534" y="214" fill="#6b8f7c" font-size="9">成交回报</text>
+
+          <rect x="324" y="178" width="120" height="48" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="384" y="198" fill="#1b2027">对账</text>
+          <text x="384" y="214" fill="#79818b" font-size="9">持仓 / 资金</text>
+
+          <rect x="174" y="178" width="120" height="48" rx="6" fill="#f7f4ea" stroke="#d8d2c3"/>
+          <text x="234" y="198" fill="#1b2027">监控告警</text>
+          <text x="234" y="214" fill="#79818b" font-size="9">日志 / 指标</text>
+        </g>
+
+        <g stroke="#a8aeb6" stroke-width="1.2" marker-end="url(#a2)" fill="none">
+          <path d="M144 70 L172 70"/>
+          <path d="M294 70 L322 70"/>
+          <path d="M444 70 L472 70"/>
+          <path d="M534 94 L534 176"/>
+          <path d="M472 202 L446 202"/>
+          <path d="M322 202 L296 202"/>
+        </g>
+
+        <path d="M234 178 L234 96" stroke="#b0512f" stroke-width="1.2" stroke-dasharray="4 3" fill="none" marker-end="url(#a3)"/>
+
+        <text x="544" y="140" font-family="monospace" font-size="9" fill="#79818b">下单</text>
+        <text x="452" y="194" font-family="monospace" font-size="9" fill="#79818b">回报</text>
+        <text x="304" y="194" font-family="monospace" font-size="9" fill="#79818b">对账</text>
+        <text x="242" y="142" font-family="monospace" font-size="9" fill="#b0512f">反馈</text>
+
+        <text x="330" y="256" font-family="monospace" font-size="9.5" fill="#b0512f" text-anchor="middle">任何一笔订单，都必须穿过风控，且状态可追溯</text>
+      </svg>
+    </div>
+    <figcaption><b>图 11-1</b>　一个最小可用的实盘架构。风控不是「一个模块」，而是所有下单路径的<strong>唯一入口</strong>——没有任何代码可以绕过它直接发单。</figcaption>
+  </figure>
+
+  <h2><span class="h2-n">11.2</span>状态机：订单的一生</h2>
+
+  <p>
+    订单不是「发出去就完了」。它有明确的状态转移，每一次转移都必须被记录：
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>order_state.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>from enum import Enum
+
+class OrderState(Enum):
+    CREATED = "created"          # 本地创建
+    SUBMITTING = "submitting"    # 已发送，等待确认
+    ACKED = "acked"              # 交易所已接受
+    PARTIAL = "partial"          # 部分成交
+    FILLED = "filled"            # 全部成交
+    CANCELING = "canceling"      # 撤单请求已发
+    CANCELED = "canceled"        # 已撤销
+    REJECTED = "rejected"        # 被拒绝
+    UNKNOWN = "unknown"          # 状态未知（断线/超时）
+
+# 合法转移
+TRANSITIONS = {
+    OrderState.CREATED:    {OrderState.SUBMITTING},
+    OrderState.SUBMITTING: {OrderState.ACKED, OrderState.REJECTED, OrderState.UNKNOWN},
+    OrderState.ACKED:      {OrderState.PARTIAL, OrderState.FILLED,
+                            OrderState.CANCELING, OrderState.CANCELED},
+    OrderState.PARTIAL:    {OrderState.PARTIAL, OrderState.FILLED, OrderState.CANCELING},
+    OrderState.CANCELING:  {OrderState.CANCELED, OrderState.FILLED},
+    OrderState.UNKNOWN:    {OrderState.ACKED, OrderState.REJECTED, OrderState.CANCELED},
+}
+
+def can_transition(src: OrderState, dst: OrderState) -&gt; bool:
+    return dst in TRANSITIONS.get(src, set())</code></pre>
+  </div>
+
+  <p>
+    <strong>UNKNOWN 是最危险的状态。</strong>网络超时后，你不知道订单是否到达交易所。
+    此时正确的做法不是重发（可能重复下单），而是：
+    <strong>先查询，查询失败则撤单，撤单失败则人工介入</strong>。
+    这条规则能避免 90% 的「幽灵订单」事故。
+  </p>
+
+  <h2><span class="h2-n">11.3</span>幂等：重复请求不能重复下单</h2>
+
+  <p>
+    分布式系统的经典问题：客户端超时重试，服务端收到了两次请求。
+    在交易里，这意味着<strong>买了两倍</strong>。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>idempotent.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import hashlib
+import sqlite3
+
+def client_order_id(strategy: str, symbol: str, side: str,
+                    target_qty: int, trade_date: str) -&gt; str:
+    """由业务语义生成唯一 ID：同一天、同一策略、同一标的、同一目标，
+    重复调用会得到同一个 ID，从而被去重。"""
+    raw = f"{strategy}|{symbol}|{side}|{target_qty}|{trade_date}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:24]
+
+
+def submit_once(conn: sqlite3.Connection, coid: str, payload: dict) -&gt; bool:
+    """返回 True 表示本次真的提交了；False 表示已存在，跳过。"""
+    try:
+        conn.execute(
+            "INSERT INTO orders(client_order_id, payload, state) VALUES (?, ?, ?)",
+            (coid, str(payload), "created"),
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False          # 主键冲突 = 已经提交过</code></pre>
+  </div>
+
+  <p>
+    注意这个 ID 的生成方式：它不是随机 UUID，而是<strong>由业务语义决定</strong>的。
+    这样即使进程重启、重试三次，只要「策略 + 标的 + 方向 + 目标数量 + 日期」相同，
+    ID 就相同，数据库主键会拦住重复。
+  </p>
+
+  <h2><span class="h2-n">11.4</span>风控：硬约束与熔断</h2>
+
+  <p>
+    风控分两层：<strong>事前</strong>（下单前检查）和<strong>事中/事后</strong>（监控与熔断）。
+    事前的检查必须是<strong>同步的、阻塞的</strong>——不通过就不许发单。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:150px;">约束</th><th>规则</th><th>触发动作</th></tr></thead>
+      <tbody>
+        <tr><td>单笔上限</td><td>单笔订单金额 ≤ 总资金 5%</td><td>拒绝</td></tr>
+        <tr><td>单标的上限</td><td>单标的市值 ≤ 总资金 15%</td><td>拒绝</td></tr>
+        <tr><td>总仓位上限</td><td>总市值 ≤ 总资金 × 1.0</td><td>拒绝</td></tr>
+        <tr><td>日亏损熔断</td><td>当日亏损 ≥ 3%</td><td>停止开新仓，只允许平仓</td></tr>
+        <tr><td>回撤熔断</td><td>从高点回撤 ≥ 15%</td><td>全部平仓，人工复核</td></tr>
+        <tr><td>订单频率</td><td>每分钟 &gt; 20 笔</td><td>暂停 5 分钟并告警</td></tr>
+        <tr><td>价格偏离</td><td>成交价偏离中间价 &gt; 2%</td><td>拒单</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>risk.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>from dataclasses import dataclass
+import time
+
+
+@dataclass
+class RiskLimits:
+    max_order_pct: float = 0.05
+    max_symbol_pct: float = 0.15
+    max_gross: float = 1.0
+    daily_loss_limit: float = 0.03
+    max_drawdown: float = 0.15
+    max_orders_per_min: int = 20
+
+
+class RiskGate:
+    def __init__(self, limits: RiskLimits):
+        self.limits = limits
+        self.day_start_equity = None
+        self.peak_equity = None
+        self.order_times = []
+        self.halted = False
+
+    def on_new_day(self, equity: float):
+        self.day_start_equity = equity
+        self.peak_equity = max(self.peak_equity or equity, equity)
+        self.halted = False
+
+    def check(self, order_value: float, symbol_value: float, gross_value: float,
+              equity: float, now: float | None = None) -&gt; tuple[bool, str]:
+        L = self.limits
+        now = now or time.time()
+
+        if self.halted:
+            return False, "系统已熔断"
+
+        # 日亏损
+        if self.day_start_equity and equity / self.day_start_equity - 1 &lt;= -L.daily_loss_limit:
+            self.halted = True
+            return False, f"触发日亏损熔断"
+
+        # 回撤
+        self.peak_equity = max(self.peak_equity or equity, equity)
+        if equity / self.peak_equity - 1 &lt;= -L.max_drawdown:
+            self.halted = True
+            return False, "触发回撤熔断"
+
+        # 仓位
+        if order_value &gt; equity * L.max_order_pct:
+            return False, "单笔超限"
+        if symbol_value &gt; equity * L.max_symbol_pct:
+            return False, "单标的超限"
+        if gross_value &gt; equity * L.max_gross:
+            return False, "总仓位超限"
+
+        # 频率
+        self.order_times = [t for t in self.order_times if now - t &lt; 60]
+        if len(self.order_times) &gt;= L.max_orders_per_min:
+            return False, "下单频率超限"
+        self.order_times.append(now)
+
+        return True, "ok"</code></pre>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">Kill Switch 必须是物理的</div>
+    <p>
+      熔断逻辑写在代码里，就有 bug 的可能。成熟的团队会有一个<strong>独立于交易进程</strong>的
+      开关：一个文件、一个 HTTP 端点、或者一个物理按钮。它直接让执行进程停止发单，
+      不依赖任何策略逻辑。<strong>如果只有代码里的熔断，你就是在用同一套 bug 保护自己。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">11.5</span>对账：每天必须做的一件事</h2>
+
+  <p>
+    收盘后，你的系统认为的持仓，必须和券商返回的持仓<strong>完全一致</strong>。
+    不一致的原因可能是：成交回报丢失、部分成交未处理、分红送股、手工操作。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>reconcile.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>def reconcile(local: dict[str, int], broker: dict[str, int]) -&gt; dict:
+    """对比本地与券商的持仓，返回差异。"""
+    symbols = set(local) | set(broker)
+    diffs = {}
+    for s in symbols:
+        l, b = local.get(s, 0), broker.get(s, 0)
+        if l != b:
+            diffs[s] = {"local": l, "broker": b, "diff": b - l}
+    return diffs
+
+
+def assert_flat_if_halted(diffs: dict, halted: bool):
+    """如果系统熔断，必须确认所有仓位已平。"""
+    if halted and diffs:
+        raise RuntimeError(f"熔断后仍有持仓差异，需人工介入: {diffs}")</code></pre>
+  </div>
+
+  <p>
+    对账不只是「看一眼」。它应该是一个<strong>硬性流程</strong>：不一致就告警，
+    连续两天不一致就停止交易。因为持仓不一致意味着你的所有风险计算都是错的。
+  </p>
+
+  <h2><span class="h2-n">11.6</span>可观测性：你该监控什么</h2>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>心跳</h4>
+      <p>策略进程、行情连接、交易连接，各自每分钟打一次心跳。缺失 2 分钟告警。</p>
+    </div>
+    <div class="card">
+      <h4>延迟</h4>
+      <p>行情到达 → 信号计算 → 下单 → 回报，每一段的 P50/P99。P99 恶化往往是事故前兆。</p>
+    </div>
+    <div class="card">
+      <h4>订单健康度</h4>
+      <p>拒单率、撤单率、成交率、平均滑点。拒单率突然上升，通常是参数或接口出了问题。</p>
+    </div>
+    <div class="card">
+      <h4>持仓与风险</h4>
+      <p>实时仓位、行业暴露、beta、VaR。与目标偏离超过阈值就告警。</p>
+    </div>
+    <div class="card">
+      <h4>盈亏</h4>
+      <p>当日 PnL、累计 PnL、与回测预期的偏离。偏离过大说明市场结构变了。</p>
+    </div>
+    <div class="card">
+      <h4>数据质量</h4>
+      <p>缺失行情数、异常价格数、时间戳延迟。数据问题往往先于交易问题出现。</p>
+    </div>
+  </div>
+
+  <div class="box idea">
+    <div class="box-label">告警的设计原则</div>
+    <p>
+      <strong>告警必须可执行。</strong>每一条告警都应该对应一个明确的动作（重启、平仓、检查网络、忽略）。
+      如果一个告警你每次都忽略，就删掉它——它只会训练你忽略所有告警。
+      另外，把「严重」和「警告」分开：严重告警打电话，警告发消息。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">11.7</span>部署：让错误无法上线</h2>
+
+  <ul>
+    <li><strong>版本固定</strong>：策略、参数、依赖版本全部写入配置文件，随订单一起记录。这样任何一笔交易都能追溯到当时的代码版本。</li>
+    <li><strong>灰度</strong>：新版本先跑纸上交易（paper trading）两周，再用 10% 资金，最后全量。</li>
+    <li><strong>回放</strong>：把历史行情重放给新版本，对比输出是否与旧版本一致（除了预期的改动）。</li>
+    <li><strong>一键回滚</strong>：保留上一个可用版本，出问题 30 秒内切回。</li>
+    <li><strong>时间同步</strong>：所有机器用 NTP 同步，日志时间戳必须可比。</li>
+  </ul>
+
+  <h2><span class="h2-n">11.8</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>没有幂等，重试导致重复下单。</li>
+    <li>UNKNOWN 状态直接重发，而不是先查询。</li>
+    <li>风控可以被绕过（某个脚本直接调了券商 API）。</li>
+    <li>熔断逻辑写在策略里，策略崩了熔断也失效。</li>
+    <li>不做每日对账。</li>
+    <li>没有 kill switch，或者 kill switch 需要改代码才能触发。</li>
+    <li>告警太多，导致真正的严重告警被淹没。</li>
+    <li>新版本直接全量上线，没有灰度。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>给 <code>RiskGate</code> 加一条「行业暴露上限」，并写单元测试验证它会被触发。</li>
+      <li>模拟一次网络超时：订单状态变成 UNKNOWN，写出你的处理流程（查询 → 撤单 → 人工）。</li>
+      <li>设计一份每日对账报告，包含持仓、现金、成交、手续费四个部分。</li>
+      <li>思考：如果你的策略在凌晨 2 点（美股）触发了回撤熔断，你希望系统做什么？</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>系统的第一目标是「不因 bug 破产」，不是「赚钱」。</li>
+      <li>订单是状态机；UNKNOWN 状态必须查询而非重发。</li>
+      <li>幂等键应由业务语义生成，而不是随机 UUID。</li>
+      <li>风控必须是所有下单路径的唯一入口，且 kill switch 要独立于交易进程。</li>
+      <li>每日对账是硬性流程，不一致就停。</li>
+      <li>可观测性比功能重要：心跳、延迟、订单健康度、持仓、盈亏、数据质量。</li>
+    </ul>
+  </div>
+</section>

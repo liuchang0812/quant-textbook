@@ -1,0 +1,315 @@
+<section class="chapter" id="ch13">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 13 · 第四部 修炼</div>
+    <h1 class="ch-title">心态、流程<br>与策略生命周期</h1>
+    <p class="ch-abs">
+      你可以完全理解前面所有章节，然后在真实回撤的第三个月把系统关掉。
+      交易的最后一道关卡不是知识，是行为。这一章讲三件事：
+      如何用流程替代意志力、如何判断一个策略该不该退役、以及个人投资者必须接受的现实约束。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>28 分钟</b></span>
+      <span>难度 <b>入门 → 中级</b></span>
+      <span>代码 <b>无</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    有一个实验很有名：给投资者看两种基金，A 每年稳定 8%，B 平均 10% 但每隔几年亏 20%。
+    大多数人选 A，尽管 B 的长期收益更高。这不是愚蠢，是<strong>人类对痛苦的权重天然高于快乐</strong>。
+  </p>
+
+  <p>
+    交易系统必须为这个事实设计，而不是假设自己能克服它。你需要的不是「更强大的意志力」，
+    是<strong>让正确的事变得容易，让错误的事变得困难</strong>。
+  </p>
+
+  <h2><span class="h2-n">13.1</span>过程与结果：唯一重要的思维切换</h2>
+
+  <p>
+    单笔交易的结果是随机的。一个好策略也可能连续亏 10 次，一个坏策略也可能连赢 20 次。
+    如果你用结果评价决策，你会系统性地学到错误的东西。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">概率思维的三句话</div>
+    <p>
+      ① 我做的每一个决策，都只是在调整概率，不是在决定结果。<br>
+      ② 一次亏损不证明我错了，一次盈利不证明我对了。<br>
+      ③ 我唯一能控制的，是决策过程的质量和下注的大小。
+    </p>
+  </div>
+
+  <p>
+    这不是心灵鸡汤，它有非常具体的实践含义：<strong>你的复盘对象应该是「决策」，不是「盈亏」</strong>。
+    一笔亏损的交易，如果它符合规则、仓位合理、执行到位，它就是一笔好交易。
+    一笔盈利的交易，如果是靠加仓死扛换来的，它就是一笔坏交易——而且它会更危险，
+    因为它强化了坏习惯。
+  </p>
+
+  <h2><span class="h2-n">13.2</span>七个会杀死你的偏差</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:120px;">偏差</th><th>表现</th><th>后果</th><th>对策</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>损失厌恶</b></td>
+          <td>亏了不愿卖，赚了急着跑</td>
+          <td>截断利润、放大亏损</td>
+          <td>预设止损与止盈规则，写成代码</td>
+        </tr>
+        <tr>
+          <td><b>处置效应</b></td>
+          <td>卖出赢家、持有输家</td>
+          <td>组合里全是「套牢盘」</td>
+          <td>按信号调仓，不按成本价决策</td>
+        </tr>
+        <tr>
+          <td><b>确认偏误</b></td>
+          <td>只看支持自己观点的信息</td>
+          <td>错过反转信号</td>
+          <td>主动寻找反例，写「证伪清单」</td>
+        </tr>
+        <tr>
+          <td><b>近因偏差</b></td>
+          <td>用最近三个月推断未来三年</td>
+          <td>追高、恐慌割肉</td>
+          <td>看长周期数据，做滚动统计</td>
+        </tr>
+        <tr>
+          <td><b>锚定效应</b></td>
+          <td>盯着自己的买入成本</td>
+          <td>该止损时不止损</td>
+          <td>成本价与决策无关，只看未来分布</td>
+        </tr>
+        <tr>
+          <td><b>过度自信</b></td>
+          <td>连续盈利后加大仓位</td>
+          <td>一次回撤抹掉半年利润</td>
+          <td>仓位由公式决定，不由情绪决定</td>
+        </tr>
+        <tr>
+          <td><b>后见之明</b></td>
+          <td>「我早就知道会跌」</td>
+          <td>高估自己的预测能力</td>
+          <td>记录事前判断，事后对照</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">13.3</span>交易日志：唯一诚实的镜子</h2>
+
+  <p>
+    日志不是记「今天赚了多少」，而是记<strong>决策的上下文</strong>。一份有用的日志至少包含：
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>journal.csv</span><button class="copy-btn">COPY</button></div>
+<pre><code>date,symbol,side,entry,stop,target,size,risk_pct,reason,confidence,exit,exit_reason,pnl_r,rule_followed,note
+2026-03-02,600519,buy,1680,1620,1820,100,1.0,突破20日高点+放量,3,1750,移动止损,1.2,yes,执行符合计划
+2026-03-05,000001,buy,11.20,10.80,12.00,2000,1.0,超跌反弹,2,10.75,止损,-1.0,yes,逆势抄底，下次等确认</code></pre>
+  </div>
+
+  <p>
+    关键是最后两列：<strong>rule_followed</strong>（是否遵守规则）和 <strong>pnl_r</strong>（以 R 为单位的盈亏）。
+    每周统计一次：
+  </p>
+
+  <ul>
+    <li>遵守规则时的平均 R vs 违反规则时的平均 R。</li>
+    <li>哪类理由的胜率最高？哪类最低？</li>
+    <li>亏损最大的三笔，是规则问题还是执行问题？</li>
+  </ul>
+
+  <div class="box note">
+    <div class="box-label">一个反直觉的发现</div>
+    <p>
+      大多数人做完这个统计会发现：<strong>违反规则的交易，平均收益显著低于遵守规则的交易</strong>——
+      即使那些违规交易当时看起来「更聪明」。因为规则是你冷静时定的，违规是你激动时做的。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">13.4</span>策略的生命周期</h2>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 300" role="img" aria-label="策略生命周期">
+        <line x1="60" y1="240" x2="630" y2="240" stroke="#d8d2c3"/>
+
+        <!-- phases background -->
+        <rect x="60" y="30" width="90" height="210" fill="#f7f4ea"/>
+        <rect x="150" y="30" width="90" height="210" fill="#faf7ef"/>
+        <rect x="240" y="30" width="110" height="210" fill="#f5faf7"/>
+        <rect x="350" y="30" width="130" height="210" fill="#f0f6f2"/>
+        <rect x="480" y="30" width="150" height="210" fill="#fdf6f1"/>
+
+        <!-- equity curve -->
+        <path d="M60 230 L100 225 L140 220 L180 212 L220 200 L260 180 L300 150 L340 120 L380 96 L420 78 L460 66 L500 60 L540 72 L580 96 L630 140"
+              fill="none" stroke="#1d3f63" stroke-width="2"/>
+
+        <!-- stage labels -->
+        <g font-family="monospace" font-size="9" fill="#79818b">
+          <text x="68" y="256">研究</text>
+          <text x="158" y="256">纸面</text>
+          <text x="252" y="256">小资金</text>
+          <text x="372" y="256">放大</text>
+          <text x="500" y="256">衰减 / 退役</text>
+        </g>
+
+        <!-- markers -->
+        <line x1="240" y1="30" x2="240" y2="240" stroke="#d8d2c3" stroke-dasharray="3 3"/>
+        <line x1="350" y1="30" x2="350" y2="240" stroke="#d8d2c3" stroke-dasharray="3 3"/>
+        <line x1="480" y1="30" x2="480" y2="240" stroke="#d8d2c3" stroke-dasharray="3 3"/>
+
+        <text x="500" y="52" font-family="sans-serif" font-size="10" fill="#b0512f">收益开始衰减</text>
+        <text x="580" y="160" font-family="sans-serif" font-size="10" fill="#b0512f">退役</text>
+
+        <text x="60" y="24" font-family="monospace" font-size="9.5" fill="#a8aeb6">资金曲线 / 策略成熟度</text>
+      </svg>
+    </div>
+    <figcaption><b>图 13-1</b>　策略的生命周期。大部分策略不是「突然失效」，而是慢慢衰减。关键是区分「正常回撤」和「结构性衰减」。</figcaption>
+  </figure>
+
+  <h3>阶段一：研究（3–6 个月）</h3>
+  <p>
+    目标不是找到「最好的策略」，而是找到一个<strong>你能解释、能复现、能承受</strong>的策略。
+    通过标准：样本外夏普 &gt; 0.5、扣成本后仍为正、参数不敏感、逻辑可解释。
+  </p>
+
+  <h3>阶段二：纸面交易（1–3 个月）</h3>
+  <p>
+    不投钱，但每天按真实价格记录信号与「如果成交」的结果。
+    这个阶段验证的不是策略，是<strong>你的系统和你的执行力</strong>：
+    数据有没有延迟？信号会不会漏？你能不能每天按时操作？
+  </p>
+
+  <h3>阶段三：小资金（3–6 个月）</h3>
+  <p>
+    用你「亏光也不影响生活」的金额。这个阶段的目的是暴露<strong>真实成本与心理反应</strong>。
+    很多人会在这里发现：回测里的滑点是 5bps，实际是 25bps。
+  </p>
+
+  <h3>阶段四：放大</h3>
+  <p>
+    逐步加资金，每次加仓后观察 1–2 个月。加仓的节奏应该慢于你的信心增长速度——
+    因为信心通常跑得比证据快。
+  </p>
+
+  <h3>阶段五：衰减与退役</h3>
+  <p>
+    策略会失效。原因可能是拥挤、监管、市场结构变化。你需要事先定义<strong>退役条件</strong>：
+  </p>
+
+  <ul>
+    <li>滚动 12 个月收益低于历史 5% 分位。</li>
+    <li>连续 18 个月跑输基准。</li>
+    <li>核心假设被证伪（比如因子逻辑不再成立）。</li>
+    <li>回撤超过历史最大回撤的 1.5 倍。</li>
+  </ul>
+
+  <div class="box warn">
+    <div class="box-label">最难的部分</div>
+    <p>
+      退役条件必须<strong>在策略赚钱的时候</strong>写下。因为亏钱的时候，你会找各种理由延长它：
+      「再给它三个月」「这次是特殊情况」「长期看还是有效的」。
+      这些理由可能都对，但你没有能力在压力下客观判断——所以让规则替你判断。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">13.5</span>资金曲线管理：把策略当员工</h2>
+
+  <p>
+    一个有用的心理模型：<strong>把每个策略当成一个员工</strong>。你要做的不是「相信他」，
+    而是「给他设定 KPI、定期考核、该开除时开除」。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>维度</th><th>问题</th><th>行动</th></tr></thead>
+      <tbody>
+        <tr><td>绩效</td><td>过去 12 个月是否达到预期？</td><td>低于阈值 → 降权</td></tr>
+        <tr><td>稳定性</td><td>收益是否集中在少数几个月？</td><td>集中度高 → 降权</td></tr>
+        <tr><td>相关性</td><td>和其他策略是否越来越像？</td><td>相关性上升 → 合并或剔除</td></tr>
+        <tr><td>容量</td><td>资金放大后成本是否吃掉收益？</td><td>接近容量 → 停止加资金</td></tr>
+        <tr><td>逻辑</td><td>当初的假设还成立吗？</td><td>不成立 → 立即退役</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2><span class="h2-n">13.6</span>个人投资者的现实约束</h2>
+
+  <p>
+    这一节可能有点扫兴，但很重要。个人做量化，和机构相比有明确的劣势：
+  </p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>数据成本</h4>
+      <p>干净的 PIT 数据、历史成分股、逐笔行情，一年可能几万到几十万。免费数据有坑。</p>
+    </div>
+    <div class="card">
+      <h4>交易成本</h4>
+      <p>没有机构费率，没有交易所返佣，融券成本高，做空工具少。</p>
+    </div>
+    <div class="card">
+      <h4>容量</h4>
+      <p>资金小意味着很多策略「不值得做」——固定成本占比太高。</p>
+    </div>
+    <div class="card">
+      <h4>时间</h4>
+      <p>你有本职工作。每天能投入 1–2 小时，和全职团队的差距是结构性的。</p>
+    </div>
+  </div>
+
+  <p>
+    但也有优势：<strong>你不需要每季度向投资人交代，可以承受更长的回撤期；
+    你可以做小容量、高 alpha 的策略；你可以自由选择不交易。</strong>
+    这些优势指向同一个方向：<strong>低频、小容量、逻辑清晰、成本敏感</strong>。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">给个人的最优解</div>
+    <p>
+      大概率不是「做一个高频量化基金」，而是：<strong>核心仓位用低成本指数基金，
+      卫星仓位用 1–2 个你能完全解释的策略</strong>。这样你的收益不依赖单一策略，
+      你的精力也不会被交易耗尽。先把「不亏大钱」做好，再谈超额收益。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">13.7</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用盈亏评价决策，而不是用过程。</li>
+    <li>没有交易日志，或者日志只记结果不记理由。</li>
+    <li>在亏钱时临时改变规则。</li>
+    <li>连续盈利后加大杠杆。</li>
+    <li>没有事先定义退役条件。</li>
+    <li>把「回撤」当成「策略失效」，在最低点关掉系统。</li>
+    <li>用生活必需资金交易。</li>
+    <li>同时跑五个策略，每个都只投一点点，结果无法归因。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>写下你的「退役条件」，三条，具体到数字。然后把它贴在显示器上。</li>
+      <li>回顾你过去 10 笔交易，标注「是否遵守规则」，计算遵守与违反的平均收益。</li>
+      <li>设计一个交易日志模板，包含 13.3 节的所有字段。</li>
+      <li>思考：如果你的策略连续 12 个月跑输指数，你会怎么做？把这个答案写下来，签字。</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>用过程评价决策，不用结果。</li>
+      <li>七个偏差里，最致命的是损失厌恶与处置效应。</li>
+      <li>交易日志的核心是记录「是否遵守规则」，而不是盈亏。</li>
+      <li>策略有生命周期：研究 → 纸面 → 小资金 → 放大 → 衰减 → 退役。</li>
+      <li>退役条件必须在赚钱时写下。</li>
+      <li>个人投资者的最优解通常是「核心指数 + 卫星策略」，而不是全职高频。</li>
+    </ul>
+  </div>
+</section>

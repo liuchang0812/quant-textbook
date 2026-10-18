@@ -1,0 +1,356 @@
+<section class="chapter" id="ch10">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 10 · 第三部 工程</div>
+    <h1 class="ch-title">执行<br>从信号到成交</h1>
+    <p class="ch-abs">
+      信号告诉你「买什么」，执行决定你「实际付了多少钱」。
+      一个年化 15% 的策略，如果执行多付 3%，它就变成了 12%；
+      而一个高频策略，执行成本可以直接把它从盈利变成亏损。
+      这一章讲清楚交易成本的解剖、冲击的平方根定律、以及最优执行轨迹。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>36 分钟</b></span>
+      <span>难度 <b>进阶</b></span>
+      <span>代码 <b>Almgren-Chriss</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    假设你要买入 100 万股某股票。盘口卖一只有 2 万股。
+    你有两个选择：一次性市价买入，承受巨大的冲击；或者拆成 50 天慢慢买，
+    但价格可能在这 50 天里涨上去。
+    <strong>执行的全部学问，就是在这两种痛苦之间找最优解。</strong>
+  </p>
+
+  <h2><span class="h2-n">10.1</span>交易成本的解剖</h2>
+
+  <p>
+    学术上有一个统一的概念：<strong>实施差额</strong>（implementation shortfall，IS）。
+    它衡量的是「决策时的理论价格」与「实际成交均价」之间的差距。
+  </p>
+
+  <div class="math">
+    IS = (实际成交均价 − 决策价格) × 方向 × 数量
+    <span class="eq-n">(10.1)</span>
+  </div>
+
+  <p>
+    IS 可以分解成四块，每一块对应不同的优化手段：
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:120px;">成分</th><th>来源</th><th>优化手段</th></tr></thead>
+      <tbody>
+        <tr><td><b>显性成本</b></td><td>佣金、税费、交易所规费</td><td>选低费率券商；减少交易频率</td></tr>
+        <tr><td><b>价差成本</b></td><td>跨过买卖价差</td><td>用限价单、做被动成交</td></tr>
+        <tr><td><b>冲击成本</b></td><td>你的订单改变了价格</td><td>拆单、降低参与率、拉长时间</td></tr>
+        <tr><td><b>时机风险</b></td><td>等待期间价格漂移</td><td>加快执行、使用短期 alpha 信号</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    注意最后两项是<strong>此消彼长</strong>的：拆得越细，冲击越小，但暴露在价格漂移下的时间越长。
+    这就是执行的 core trade-off。
+  </p>
+
+  <h2><span class="h2-n">10.2</span>冲击的平方根定律</h2>
+
+  <p>
+    这是市场微观结构里最稳健的经验规律之一：<strong>价格冲击大致与订单量的平方根成正比</strong>，
+    而不是线性。
+  </p>
+
+  <div class="math">
+    Impact ≈ Y · σ · √( Q / V )
+    <span class="eq-n">(10.2)</span>
+  </div>
+  <p class="math-note">σ 为日波动率，Q 为你的订单量，V 为日均成交量，Y 为经验常数（约 0.5–1）。</p>
+
+  <p>
+    含义非常反直觉：<strong>订单量翻 4 倍，冲击只翻 2 倍</strong>。
+    这解释了为什么大资金反而有优势——它们的单笔成本占比更低。
+    也解释了为什么小资金不该模仿大资金的「慢慢建仓」：你的冲击本来就小，
+    等待反而带来更多时机风险。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 260" role="img" aria-label="冲击成本与参与率的关系">
+        <line x1="70" y1="210" x2="620" y2="210" stroke="#d8d2c3"/>
+        <line x1="70" y1="30" x2="70" y2="210" stroke="#d8d2c3"/>
+
+        <!-- sqrt curve -->
+        <path d="M70 205 C130 150 180 120 240 100 C320 74 420 58 620 40"
+              fill="none" stroke="#1d3f63" stroke-width="2.2"/>
+        <!-- linear reference -->
+        <line x1="70" y1="205" x2="560" y2="40" stroke="#b0512f" stroke-width="1.4" stroke-dasharray="5 4"/>
+
+        <text x="430" y="34" font-family="monospace" font-size="10" fill="#1d3f63">√Q（真实）</text>
+        <text x="480" y="86" font-family="monospace" font-size="10" fill="#b0512f">线性（错误直觉）</text>
+
+        <text x="300" y="238" font-family="monospace" font-size="9.5" fill="#79818b">订单量 / 日均成交量 →</text>
+        <text x="22" y="130" font-family="monospace" font-size="9.5" fill="#79818b" transform="rotate(-90 32 130)">冲击成本 →</text>
+      </svg>
+    </div>
+    <figcaption><b>图 10-1</b>　平方根定律。冲击随参与率上升，但边际递增速度递减。线性假设会高估大单成本、低估小单的相对成本。</figcaption>
+  </figure>
+
+  <h2><span class="h2-n">10.3</span>Almgren-Chriss：最优执行轨迹</h2>
+
+  <p>
+    1999 年，Almgren 和 Chriss 把执行问题形式化为一个优化问题：
+    在「冲击成本」与「时机风险」之间找平衡。
+  </p>
+
+  <div class="math">
+    min &nbsp; E[Cost] + λ · Var[Cost]
+    <span class="eq-n">(10.3)</span>
+  </div>
+
+  <p>
+    λ 是风险厌恶系数。λ = 0 时，你只关心成本，会无限拆单（TWAP）；
+    λ → ∞ 时，你只关心风险，会立刻全部成交。
+  </p>
+
+  <p>
+    在永久冲击与临时冲击都线性的假设下，最优持仓路径是<strong>指数衰减</strong>：
+  </p>
+
+  <div class="math">
+    x(t) = X · sinh( κ(T − t) ) / sinh( κT ) &nbsp;&nbsp;,&nbsp;&nbsp; κ = √(λσ²/η)
+    <span class="eq-n">(10.4)</span>
+  </div>
+
+  <p>
+    κ 越大（风险厌恶高、波动大、冲击系数小），衰减越快，越接近「立刻成交」；
+    κ → 0 时退化为线性，即 TWAP。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>almgren_chriss.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+
+
+def ac_trajectory(shares: int, horizon: int, sigma: float,
+                  eta: float, lam: float) -&gt; np.ndarray:
+    """返回每个时间步结束时剩余股数（长度 horizon+1）。
+    sigma: 每期价格波动率；eta: 临时冲击系数；lam: 风险厌恶。
+    """
+    if lam &lt;= 0:
+        # 退化为 TWAP
+        return np.linspace(shares, 0, horizon + 1)
+
+    kappa = np.sqrt(lam * sigma ** 2 / eta)
+    t = np.arange(horizon + 1)
+    remaining = shares * np.sinh(kappa * (horizon - t)) / np.sinh(kappa * horizon)
+    return remaining
+
+
+def simulate_cost(trajectory: np.ndarray, sigma: float, eta: float,
+                  gamma: float, seed: int = 0) -> dict:
+    """模拟执行成本：临时冲击 + 永久冲击 + 随机漂移。
+
+    eta   : 临时冲击系数（单位：价格 / 股）
+    gamma : 永久冲击系数
+    sigma : 每期价格波动率
+    """
+    rng = np.random.default_rng(seed)
+    trades = -np.diff(trajectory)          # 每期买入量
+    price = 100.0
+    arrival = price
+    notional, qty, temp_cost = 0.0, 0.0, 0.0
+
+    for q in trades:
+        if q <= 0:
+            continue
+        exec_px = price + eta * q          # 临时冲击：成交瞬间的价格劣化
+        notional += exec_px * q
+        qty += q
+        temp_cost += eta * q * q
+        price += gamma * q                 # 永久冲击：改变后续所有成交价
+        price *= 1 + sigma * rng.standard_normal() * 0.1
+
+    avg_px = notional / qty
+    return {
+        "arrival": arrival,
+        "avg_price": avg_px,
+        "total_bps": (avg_px - arrival) / arrival * 1e4,
+        "temp_cost": temp_cost,
+    }
+
+
+# 对比三种策略
+X, T = 1_000_000, 20
+for name, lam in [("TWAP", 0.0), ("AC 中等", 1e-6), ("AC 激进", 1e-4)]:
+    traj = ac_trajectory(X, T, sigma=0.02, eta=1e-7, lam=lam)
+    res = simulate_cost(traj, sigma=0.02, eta=1e-4, gamma=1e-6)
+    print(f"{name:10s} 总成本 {res['total_bps']:7.2f} bps")</code></pre>
+  </div>
+
+  <div class="widget" data-widget="ac">
+    <div class="widget-head">
+      <span class="widget-title">实验 10-1 · 最优执行轨迹</span>
+      <span class="widget-tag">ALMGREN-CHRISS</span>
+    </div>
+    <div class="widget-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label>风险厌恶 λ <span class="val" data-out="lam">1e-6</span></label>
+          <input type="range" data-in="lam" min="0" max="100" value="40" step="1">
+        </div>
+        <div class="ctrl">
+          <label>执行期（步） <span class="val" data-out="hor">20</span></label>
+          <input type="range" data-in="hor" min="5" max="60" value="20" step="1">
+        </div>
+        <div class="ctrl">
+          <label>每期波动 σ <span class="val" data-out="sig">2.0%</span></label>
+          <input type="range" data-in="sig" min="5" max="60" value="20" step="1">
+        </div>
+        <div class="readouts" style="grid-template-columns:1fr 1fr;">
+          <div class="readout"><div class="k">κ</div><div class="v" data-out="kappa">—</div></div>
+          <div class="readout"><div class="k">冲击成本</div><div class="v" data-out="impact">—</div></div>
+          <div class="readout"><div class="k">时机风险 σ</div><div class="v" data-out="risk">—</div></div>
+          <div class="readout"><div class="k">半衰期</div><div class="v" data-out="half">—</div></div>
+        </div>
+      </div>
+      <div>
+        <canvas data-canvas="ac" width="600" height="300"></canvas>
+        <div class="widget-note" data-out="acnote">实线为最优轨迹，虚线为 TWAP。λ 越大，越倾向于快速成交。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box note">
+    <div class="box-label">这个模型的问题</div>
+    <p>
+      AC 假设冲击是线性的、波动率是恒定的、且你只关心均值-方差。
+      现实中冲击是非线性的（平方根），波动率会变，而且你往往还有短期 alpha 信号
+      （「现在买比等会儿买更好」）。所以实战中的执行算法通常是 AC 的骨架 +
+      实时信号调整 + 硬约束（参与率上限、最短/最长执行时间）。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">10.4</span>四种执行算法</h2>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:100px;">算法</th><th>逻辑</th><th>优点</th><th>缺点</th></tr></thead>
+      <tbody>
+        <tr><td><b>TWAP</b></td><td>按时间均匀切片</td><td>简单、可预测</td><td>忽略成交量分布，收盘时段冲击大</td></tr>
+        <tr><td><b>VWAP</b></td><td>按历史成交量分布切片</td><td>贴近市场均价，便于考核</td><td>成交量预测误差会带来偏差</td></tr>
+        <tr><td><b>POV</b></td><td>按实时成交量固定比例参与</td><td>自适应流动性</td><td>放量时加速，可能追涨杀跌</td></tr>
+        <tr><td><b>IS</b></td><td>以实施差额最小化为目标，前快后慢</td><td>最贴近成本最优</td><td>依赖冲击与风险参数估计</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    对个人投资者，最实用的建议是：<strong>用限价单 + 分批</strong>，并且把「是否成交」
+    当成一个概率问题，而不是必然。挂在买一的价格，可能成交，也可能错过。
+    如果你必须成交，就用市价单，但把单笔控制在日均成交量的 1% 以内。
+  </p>
+
+  <h2><span class="h2-n">10.5</span>滑点：怎么测量，怎么归因</h2>
+
+  <p>
+    滑点不是一个数字，是一个分布。你必须记录每一笔交易的：
+  </p>
+
+  <ul>
+    <li>决策价格（信号生成时的中间价）</li>
+    <li>下单时间与下单价格</li>
+    <li>成交时间、成交均价、成交量</li>
+    <li>同期市场的中间价变化（用于分离「市场漂移」和「你的冲击」）</li>
+  </ul>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>tca.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import pandas as pd
+
+def tca(trades: pd.DataFrame) -&gt; pd.DataFrame:
+    """交易成本分析。trades 需含:
+    side, decision_px, arrival_mid, exec_px, qty, market_mid_at_end
+    """
+    df = trades.copy()
+    sign = df["side"].map({"buy": 1, "sell": -1})
+
+    df["total_bps"] = sign * (df["exec_px"] - df["decision_px"]) / df["decision_px"] * 1e4
+    df["delay_bps"] = sign * (df["arrival_mid"] - df["decision_px"]) / df["decision_px"] * 1e4
+    df["exec_bps"] = sign * (df["exec_px"] - df["arrival_mid"]) / df["arrival_mid"] * 1e4
+    df["market_bps"] = sign * (df["market_mid_at_end"] - df["arrival_mid"]) / df["arrival_mid"] * 1e4
+    # 执行超额 = 总成本 − 市场漂移（负值代表你比市场做得好）
+    df["excess_bps"] = df["exec_bps"] - df["market_bps"]
+
+    summary = df.groupby("side")[["total_bps", "delay_bps", "exec_bps",
+                                  "market_bps", "excess_bps"]].agg(["mean", "count"])
+    return df, summary</code></pre>
+  </div>
+
+  <p>
+    这个分解能回答一个关键问题：<strong>我的成本，是因为市场跑了，还是因为我太笨？</strong>
+    如果 <code>delay_bps</code> 很大，说明你决策太慢或下单延迟高；
+    如果 <code>exec_bps</code> 远大于 <code>market_bps</code>，说明你的冲击或价差成本过高。
+  </p>
+
+  <h2><span class="h2-n">10.6</span>容量：一个策略最多能装多少钱</h2>
+
+  <p>
+    容量（capacity）是指：在成本吃掉全部 alpha 之前，这个策略最多能管理多少资金。
+    估算方法：
+  </p>
+
+  <div class="math">
+    容量 ≈ (单笔可承受成本对应的订单量) × 每年可交易次数 × 持仓数
+    <span class="eq-n">(10.5)</span>
+  </div>
+
+  <p>
+    更实用的算法：把资金量从 100 万逐步放大到 10 亿，每个规模跑一次带冲击模型的回测，
+    画出「资金量 → 净夏普」曲线。曲线穿过 0 的那个点，就是容量上限。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">容量的隐形杀手</div>
+    <p>
+      很多策略在小资金时夏普 1.5，到 5000 万时降到 0.8，到 2 亿时归零。
+      这不是线性衰减——因为冲击是平方根，而 alpha 是线性的。
+      <strong>如果你打算管理别人的钱，容量测试比历史收益重要十倍。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">10.7</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>回测里假设零滑点，或者用固定的 1bp 滑点。</li>
+    <li>用收盘价成交，忽略集合竞价的特殊性。</li>
+    <li>大单一次性市价成交，不拆单。</li>
+    <li>拆单拆得太细，暴露在价格漂移下太久。</li>
+    <li>不记录决策价格，导致无法做成本归因。</li>
+    <li>用「成交均价 vs VWAP」考核执行，但 VWAP 本身可以被操纵。</li>
+    <li>不做容量测试就放大资金。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>ac_trajectory</code> 画出 λ 从 0 到 1e-3 的五条轨迹，观察它们如何从线性变成指数衰减。</li>
+      <li>用平方根模型估算：买入 50 万元、日均成交额 5000 万元的股票，冲击成本是多少 bps？</li>
+      <li>记录你未来 20 笔真实交易的决策价、成交价、同期中间价，做一次 TCA。你的主要成本来自哪里？</li>
+      <li>思考：如果策略的 alpha 衰减很快（比如只有 1 天），你应该用 TWAP 还是 IS？为什么？</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>实施差额 = 显性成本 + 价差 + 冲击 + 时机风险。</li>
+      <li>冲击大致与订单量的平方根成正比，不是线性。</li>
+      <li>Almgren-Chriss 在冲击与风险之间求最优，解是指数衰减轨迹。</li>
+      <li>TWAP/VWAP/POV/IS 各有适用场景；个人优先用限价单 + 分批。</li>
+      <li>滑点必须分解归因，否则你永远不知道该优化什么。</li>
+      <li>容量由冲击决定，放大资金前必须做容量测试。</li>
+    </ul>
+  </div>
+</section>

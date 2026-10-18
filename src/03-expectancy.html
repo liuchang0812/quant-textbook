@@ -1,0 +1,395 @@
+<section class="chapter" id="ch2">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 02 · 第一部 地基</div>
+    <h1 class="ch-title">交易的第一性原理<br>期望值</h1>
+    <p class="ch-abs">
+      如果这本书只能留下一章，我会留这一章。期望值决定了你长期是印钞机还是碎钞机；
+      仓位决定了你能活到期望值兑现的那一天。这两件事加起来，解释了交易世界里 90% 的生死。
+      而它们背后的数学，简单到令人不安。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>32 分钟</b></span>
+      <span>难度 <b>入门 → 中级</b></span>
+      <span>代码 <b>蒙特卡洛</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    赌场为什么永远赚钱？不是因为每一把都赢——轮盘赌的庄家优势只有 2.7%，
+    意味着你下注 100 块，长期平均只亏 2.7 块。它赚钱是因为它<strong>玩了上百万把</strong>，
+    而且它的资金量足以承受任何短期波动。这两点，恰好是散户做不到的：
+    玩得不够多，资金不够厚，还在用错误的仓位。
+  </p>
+
+  <p>
+    这一章要给你两样东西：一个判断「这笔交易值不值得做」的公式，
+    和一个判断「该下多大注」的公式。前者叫期望值，后者叫凯利。
+  </p>
+
+  <h2><span class="h2-n">2.1</span>期望值：把「感觉」变成算术</h2>
+
+  <p>
+    假设一个策略：胜率 40%，赢的时候平均赚 2R，输的时候平均亏 1R。
+    这里的 <strong>R</strong> 是「一个风险单位」——你每笔交易愿意亏的钱。
+    用 R 来计量，可以把不同价格、不同标的的交易放在同一把尺子上比较。
+  </p>
+
+  <div class="math">
+    E = p · W − (1 − p) · L
+    <span class="eq-n">(2.1)</span>
+  </div>
+  <p class="math-note">p 为胜率，W 为平均盈利（R），L 为平均亏损（R）。E 是每笔交易的期望收益，单位也是 R。</p>
+
+  <p>
+    代入数字：<span class="eq-inline">E = 0.4 × 2 − 0.6 × 1 = 0.2R</span>。
+    意思是：平均每做一笔，你赚 0.2 个风险单位。如果你每笔风险 1000 元，做 1000 笔，期望赚 20 万。
+  </p>
+
+  <p>
+    注意这个策略的胜率只有 40%——大部分时间是错的。这正是趋势跟踪的典型画像：
+    十次里错六次，但对的两次赚得足够多。<strong>胜率和期望值是两件独立的事</strong>，
+    而人类的大脑天生偏爱高胜率，这让我们系统性地高估了「经常对」的价值。
+  </p>
+
+  <h3>盈亏平衡胜率</h3>
+
+  <p>令 E = 0，解出 p：</p>
+
+  <div class="math">
+    p* = L / (W + L)
+    <span class="eq-n">(2.2)</span>
+  </div>
+
+  <p>
+    当 W = 2R、L = 1R 时，p* = 33.3%。你的胜率必须高于 33.3% 才不亏。
+    如果盈亏比降到 1:1，p* 就变成 50%——再扣掉交易成本，你需要 55% 以上才能赚钱。
+    这就是为什么「高胜率小止盈 + 大止损」的策略看起来很美，实际是慢性自杀：
+    它把 p 推得很高，但把 W/L 压到 0.3，p* 变成 77%，长期必然爆掉。
+  </p>
+
+  <div class="widget" data-widget="expectancy">
+    <div class="widget-head">
+      <span class="widget-title">实验 2-1 · 期望值计算器</span>
+      <span class="widget-tag">INTERACTIVE</span>
+    </div>
+    <div class="widget-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label>胜率 p <span class="val" data-out="p">40%</span></label>
+          <input type="range" data-in="p" min="10" max="90" value="40" step="1">
+        </div>
+        <div class="ctrl">
+          <label>平均盈利 W（R） <span class="val" data-out="w">2.0</span></label>
+          <input type="range" data-in="w" min="0.2" max="5" value="2" step="0.1">
+        </div>
+        <div class="ctrl">
+          <label>平均亏损 L（R） <span class="val" data-out="l">1.0</span></label>
+          <input type="range" data-in="l" min="0.2" max="3" value="1" step="0.1">
+        </div>
+        <div class="ctrl">
+          <label>单边成本（R） <span class="val" data-out="c">0.05</span></label>
+          <input type="range" data-in="c" min="0" max="0.5" value="0.05" step="0.01">
+        </div>
+      </div>
+      <div>
+        <div class="readouts">
+          <div class="readout"><div class="k">每笔期望</div><div class="v" data-out="e">+0.20 R</div></div>
+          <div class="readout"><div class="k">盈亏平衡胜率（含成本）</div><div class="v" data-out="be">33.3%</div></div>
+          <div class="readout"><div class="k">每 100 笔</div><div class="v" data-out="h">+20.0 R</div></div>
+          <div class="readout"><div class="k">扣除成本后</div><div class="v" data-out="net">+0.10 R</div></div>
+        </div>
+        <div class="widget-note" data-out="verdict">正期望。但要记住：期望值为正，不代表你能承受它兑现之前的回撤。</div>
+      </div>
+    </div>
+  </div>
+
+  <h3>成本如何改写一切</h3>
+
+  <p>
+    上图中的「单边成本」值得单独说。假设你的策略毛期望是 0.2R，每笔风险 1000 元，
+    那么毛收益是 200 元。但如果每次往返的价差 + 佣金 + 滑点是 0.15R（150 元），
+    你的净期望只剩 0.05R——50 元。再扣掉几次异常滑点，你就归零了。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">最容易被忽略的除法</div>
+    <p>
+      高频策略的生死线不是「胜率」，而是 <strong>平均盈利 ÷ 单笔成本</strong>。
+      如果你的平均盈利是 0.3R，成本是 0.25R，那么成本吃掉了 83% 的毛利。
+      此时任何微小的成本估计误差（比如滑点从 2bps 变成 4bps），都会让策略由正转负。
+      <strong>毛 alpha 越薄，对成本建模精度的要求越苛刻。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">2.2</span>凯利公式：该下多大注</h2>
+
+  <p>
+    知道期望值为正，只解决了「做不做」。接下来是「做多大」，而这个问题的答案，
+    决定了你是慢慢变富还是快速归零。
+  </p>
+
+  <p>
+    1956 年，贝尔实验室的 John Kelly 在研究信息论时给出了答案。假设你可以无限次重复一个
+    赔率为 b（赢时赚 b 倍下注额，输时亏掉下注额）、胜率为 p 的赌局，那么使长期资金增长率最大化的下注比例是：
+  </p>
+
+  <div class="math">
+    f* = p − (1 − p) / b &nbsp;=&nbsp; (p·b − (1−p)) / b
+    <span class="eq-n">(2.3)</span>
+  </div>
+
+  <p>
+    用 2.1 节的例子：p = 0.4，b = 2，则 f* = 0.4 − 0.6/2 = 0.1。
+    也就是每次投入总资金的 10%。
+  </p>
+
+  <p>
+    这个公式有三个惊人的性质，每一个都值得你停下来想一会儿：
+  </p>
+
+  <ol>
+    <li><strong>它自动惩罚低胜率。</strong>p 低于 1/(1+b) 时，f* 为负——意思是这个赌局根本不该参加。</li>
+    <li><strong>它对参数极度敏感。</strong>p 从 0.4 估成 0.45，f* 就从 0.10 跳到 0.175，仓位翻了 75%。而你的胜率估计误差，通常远大于 5%。</li>
+    <li><strong>超过 2f* 必死。</strong>下注比例超过凯利值的两倍，长期增长率转为负——哪怕每一注都是正期望。</li>
+  </ol>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 300" role="img" aria-label="下注比例与长期增长率的关系">
+        <g stroke="#f0ece1">
+          <line x1="60" y1="40" x2="620" y2="40"/><line x1="60" y1="90" x2="620" y2="90"/>
+          <line x1="60" y1="140" x2="620" y2="140"/><line x1="60" y1="190" x2="620" y2="190"/>
+        </g>
+        <line x1="60" y1="240" x2="620" y2="240" stroke="#d8d2c3"/>
+        <line x1="60" y1="20" x2="60" y2="240" stroke="#d8d2c3"/>
+
+        <!-- curve: g(f) -->
+        <path d="M60 240 C110 200 150 150 200 110 C250 72 290 55 330 52 C370 55 410 75 460 120 C510 165 560 210 620 240"
+              fill="none" stroke="#1d3f63" stroke-width="2.2"/>
+
+        <!-- kelly point -->
+        <line x1="330" y1="52" x2="330" y2="240" stroke="#b0512f" stroke-dasharray="4 4"/>
+        <circle cx="330" cy="52" r="4" fill="#b0512f"/>
+        <text x="318" y="42" font-family="monospace" font-size="10" fill="#b0512f">f* = 10%</text>
+
+        <!-- 2x kelly -->
+        <line x1="440" y1="240" x2="440" y2="240" stroke="#b0512f"/>
+        <circle cx="452" cy="112" r="3" fill="#9c7418"/>
+        <text x="410" y="100" font-family="monospace" font-size="9.5" fill="#9c7418">2f* 附近</text>
+
+        <text x="300" y="266" font-family="monospace" font-size="10" fill="#79818b">下注比例 f →</text>
+        <text x="10" y="140" font-family="monospace" font-size="10" fill="#79818b" transform="rotate(-90 30 140)">长期增长率 g →</text>
+        <text x="70" y="255" font-family="monospace" font-size="9" fill="#a8aeb6">0</text>
+        <text x="610" y="255" font-family="monospace" font-size="9" fill="#a8aeb6">100%</text>
+
+        <text x="360" y="60" font-family="sans-serif" font-size="11" fill="#1d3f63">增长率最大</text>
+        <text x="470" y="200" font-family="sans-serif" font-size="11" fill="#b0512f">过度下注 → 增长转负</text>
+      </svg>
+    </div>
+    <figcaption><b>图 2-1</b>　凯利曲线。横轴是下注比例，纵轴是长期对数增长率。它在 f* 处取最大值，在约 2f* 处穿过零点——之后你越努力，亏得越快。</figcaption>
+  </figure>
+
+  <h3>连续版本：更实用的形式</h3>
+
+  <p>
+    股票和期货不是离散赌局，收益是连续的。连续时间下的凯利公式简洁得惊人：
+  </p>
+
+  <div class="math">
+    f* = μ / σ²
+    <span class="eq-n">(2.4)</span>
+  </div>
+  <p class="math-note">μ 为预期超额收益（年化），σ 为波动率（年化）。注意分母是方差，不是标准差。</p>
+
+  <p>
+    假设一个策略年化超额 10%，波动率 20%，则 f* = 0.10 / 0.04 = 2.5。
+    这意味着理论上可以用 2.5 倍杠杆。但现实中没人这么做，原因见下一节。
+  </p>
+
+  <h3>为什么实战要用「半凯利」甚至「四分之一凯利」</h3>
+
+  <p>
+    凯利公式假设你<strong>精确知道</strong> p 和 b。现实中你不知道，你只有估计值，
+    而估计值有误差。误差在凯利公式里会被放大：仓位对 μ 是线性的，对 σ 是平方反比的。
+    更糟的是，凯利策略的回撤可以非常深——理论上，全凯利下注有约 50% 的概率经历
+    一次超过 50% 的回撤。你确定你的心理和资金结构能承受吗？
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">工程化建议</div>
+    <p>
+      用 <strong>1/4 凯利</strong>起步。它只牺牲约 25% 的长期增长率，却把回撤降到大约一半。
+      对于参数不确定的策略，这是性价比最高的选择。等策略跑满两年、样本足够，
+      再考虑往 1/2 凯利靠。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">2.3</span>波动拖累：为什么杠杆会偷走你的收益</h2>
+
+  <p>
+    假设一个策略第一年 +50%，第二年 −50%。你的直觉可能是「不赚不亏」。
+    但实际账户是：1 × 1.5 × 0.5 = 0.75，<strong>亏了 25%</strong>。
+  </p>
+
+  <p>
+    这不是算术错误，这是几何收益与算术收益的区别。长期资金的增长由<strong>几何平均</strong>决定，
+    而几何平均总是小于算术平均，差距约等于方差的一半：
+  </p>
+
+  <div class="math">
+    g ≈ μ − σ² / 2
+    <span class="eq-n">(2.5)</span>
+  </div>
+
+  <p>
+    这个 <span class="eq-inline">σ²/2</span> 叫<strong>波动拖累</strong>（volatility drag）。
+    波动率 20% 时，它每年吃掉 2%；波动率 40% 时，吃掉 8%；波动率 80% 时，吃掉 32%。
+    这就是为什么 3 倍杠杆的 ETF 长期表现远差于「指数涨 3 倍」——
+    杠杆同时放大了 μ 和 σ，而 σ² 项增长得更快。
+  </p>
+
+  <div class="box note">
+    <div class="box-label">一个反直觉的推论</div>
+    <p>
+      如果你有两个策略，年化收益都是 10%，一个波动 10%，一个波动 30%，
+      那么前者的长期复利增长是 9.5%，后者只有 5.5%。<strong>降低波动本身就是一种 alpha</strong>，
+      而且它不需要你预测得更准。这就是风险平价、波动率目标化这类技术的理论基础。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">2.4</span>破产：那个不可逆的状态</h2>
+
+  <p>
+    期望值为正、仓位合理，你仍然可能破产——只要玩得足够久，且每次下注是总资金的固定比例。
+    因为资金是一条有吸收壁的随机游走：一旦触到 0，游戏结束，之后所有的正期望都与你无关。
+  </p>
+
+  <p>
+    对于固定比例下注，破产概率有一个经典近似（risk of ruin）：
+  </p>
+
+  <div class="math">
+    P(ruin) ≈ ((1 − e) / (1 + e))<sup>N</sup>
+    <span class="eq-n">(2.6)</span>
+  </div>
+  <p class="math-note">e 为每单位的期望优势（edge），N 为你能承受的连续亏损单位数。公式是启发式的，但方向是对的：N 越大，破产概率指数级下降。</p>
+
+  <p>
+    这个公式最重要的含义不是精确计算，而是：<strong>把「能承受多少次连续亏损」当成一个设计参数</strong>。
+    如果你的策略历史最大连亏是 8 次，你应该设计成能承受 20 次。
+    这不是保守，这是给「历史样本之外」留出空间。
+  </p>
+
+  <h2><span class="h2-n">2.5</span>实验室：亲眼看着账户爆炸</h2>
+
+  <p>
+    下面这个模拟器会跑 200 条独立的资金曲线。你可以调整胜率、赔率和下注比例，
+    观察三件事：中位数结局、最差 5% 结局、以及破产（资金跌破 20%）的比例。
+  </p>
+
+  <div class="widget" data-widget="kelly">
+    <div class="widget-head">
+      <span class="widget-title">实验 2-2 · 仓位实验室</span>
+      <span class="widget-tag">MONTE CARLO</span>
+    </div>
+    <div class="widget-body">
+      <div class="controls">
+        <div class="ctrl">
+          <label>胜率 p <span class="val" data-out="p">45%</span></label>
+          <input type="range" data-in="p" min="30" max="70" value="45" step="1">
+        </div>
+        <div class="ctrl">
+          <label>赔率 b（赢时赚几倍） <span class="val" data-out="b">1.8</span></label>
+          <input type="range" data-in="b" min="0.5" max="4" value="1.8" step="0.1">
+        </div>
+        <div class="ctrl">
+          <label>下注比例 f <span class="val" data-out="f">10%</span></label>
+          <input type="range" data-in="f" min="1" max="60" value="10" step="1">
+        </div>
+        <div class="ctrl">
+          <label>交易笔数 <span class="val" data-out="n">300</span></label>
+          <input type="range" data-in="n" min="50" max="1000" value="300" step="50">
+        </div>
+        <div class="readouts" style="grid-template-columns:1fr 1fr;">
+          <div class="readout"><div class="k">凯利最优 f*</div><div class="v" data-out="kelly">14.4%</div></div>
+          <div class="readout"><div class="k">破产概率</div><div class="v" data-out="ruin">—</div></div>
+        </div>
+      </div>
+      <div>
+        <canvas data-canvas="kelly" width="600" height="300"></canvas>
+        <div class="widget-note" data-out="knote">灰线是 200 条模拟路径，红线是中位数，橙线是最差 5% 分位。</div>
+      </div>
+    </div>
+  </div>
+
+  <p>
+    多试几次，你会看到一个稳定的规律：<strong>当 f 超过 2f* 时，中位数路径开始向下</strong>，
+    而最差 5% 分位会迅速贴近零。这条规律不依赖具体的胜率或赔率，它是数学。
+  </p>
+
+  <h2><span class="h2-n">2.6</span>把 R 变成可执行的东西</h2>
+
+  <p>
+    到目前为止我们一直在用 R 这个抽象单位。落地时，它必须变成具体的股数和金额。
+    最常用的方法是<strong>基于波动率的仓位</strong>：
+  </p>
+
+  <div class="math">
+    仓位（股数） = (账户资金 × 单笔风险%) / (止损距离 × 每股价值)
+    <span class="eq-n">(2.7)</span>
+  </div>
+
+  <p>
+    假设账户 100 万，单笔风险 1%（1 万元），股票现价 50 元，你用 2×ATR 作为止损距离，
+    ATR = 1.5 元，则止损距离 = 3 元。仓位 = 10000 / 3 ≈ 3333 股，市值约 16.7 万，
+    占总资金 16.7%。
+  </p>
+
+  <p>
+    这个公式的美妙之处在于：<strong>它让每一笔交易的风险都相同</strong>。
+    波动大的股票自动买得少，波动小的自动买得多。你的资金曲线因此变得平滑，
+    而平滑的资金曲线意味着更小的波动拖累、更低的破产概率、以及更稳定的心理状态。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">注意止损距离的陷阱</div>
+    <p>
+      止损距离不能拍脑袋。太近，你会被正常波动反复扫出（胜率暴跌）；太远，单笔亏损过大。
+      常用做法是用 ATR 的 1.5–3 倍，或者用结构位（前低、支撑）加一点缓冲。
+      更重要的是：<strong>先定止损，再算仓位</strong>。反过来（先决定买多少，再看能亏多少）是散户最典型的错误。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">2.7</span>本章陷阱清单</h2>
+
+  <ul class="checklist">
+    <li>用胜率评价策略。胜率 90% 的策略可能每笔赚 1 块、亏 20 块。</li>
+    <li>把「期望值为正」当成「可以满仓」。期望值决定方向，仓位决定生死。</li>
+    <li>用全凯利。你估计的参数一定有误差，而凯利对误差极度敏感。</li>
+    <li>忽略波动拖累，以为 2 倍杠杆就是 2 倍收益。</li>
+    <li>先决定买多少，再想止损在哪。</li>
+    <li>用「连续亏损次数」的样本内最大值来设定风险预算，而不留安全边际。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>你的策略胜率 55%，盈亏比 1:1，单边成本 0.1R。净期望是多少？盈亏平衡胜率是多少？</li>
+      <li>用 2.3 节的数据（p=0.45, b=1.8），计算 f*、半凯利、以及 2f*。在实验 2-2 中验证这三个仓位的结果差异。</li>
+      <li>写一个函数 <code>position_size(capital, risk_pct, entry, stop)</code>，并对 5 只不同波动率的股票计算仓位，观察市值占比的差异。</li>
+      <li>思考题：如果一个策略的期望值为正但夏普比率为负，可能发生了什么？（提示：偏度）</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>期望值 = 胜率 × 盈利 − 败率 × 亏损。它决定一件事值不值得做，与胜率高低无关。</li>
+      <li>盈亏平衡胜率 p* = L/(W+L)。盈亏比越低，需要的胜率越高。</li>
+      <li>凯利公式给出增长最优仓位 f* = p − (1−p)/b；连续版为 μ/σ²。</li>
+      <li>超过 2f* 必死；实战用 1/4 到 1/2 凯利，为参数误差留余地。</li>
+      <li>几何收益 ≈ 算术收益 − σ²/2。降波动本身就是 alpha。</li>
+      <li>先定止损，再算仓位；让每笔交易的风险相等。</li>
+    </ul>
+  </div>
+</section>

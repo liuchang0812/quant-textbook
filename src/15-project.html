@@ -1,0 +1,354 @@
+<section class="chapter" id="ch14">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 14 · 第四部 修炼</div>
+    <h1 class="ch-title">实战<br>从零造一个策略</h1>
+    <p class="ch-abs">
+      这一章不再讲新概念，而是把前面十三章的零件装成一台机器：
+      一个日频横截面动量策略，从数据加载、信号构造、组合优化、回测、归因，
+      到成本压力测试与上线检查。你可以直接把它跑起来，然后改坏它、修好它。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>44 分钟</b></span>
+      <span>难度 <b>综合</b></span>
+      <span>代码 <b>完整项目</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    我们要造的东西很简单：<strong>每个月，买入过去 12 个月涨幅靠前、但波动率不高的股票，
+    持有 20 个交易日，然后换仓</strong>。它不性感，也不是什么秘密，但它包含了
+    一个完整策略所需的全部要素——而且它大概率不会赚钱。这没关系，
+    你的目标是学会「如何判断它为什么不赚钱」。
+  </p>
+
+  <h2><span class="h2-n">14.1</span>项目定义：先写规格，再写代码</h2>
+
+  <p>
+    任何策略在写代码之前，必须先回答这七个问题。答不上来，说明你还没想清楚。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:120px;">问题</th><th>本项目的答案</th></tr></thead>
+      <tbody>
+        <tr><td><b>赚什么钱</b></td><td>动量效应：赢家继续跑赢，源于反应不足与资金流</td></tr>
+        <tr><td><b>股票池</b></td><td>沪深 300 成分股（按当时成分，避免幸存者偏差）</td></tr>
+        <tr><td><b>信号</b></td><td>过去 12 个月收益（剔除最近 1 个月），横截面排名</td></tr>
+        <tr><td><b>过滤</b></td><td>剔除波动率最高的 30%、ST、停牌、上市不足 1 年</td></tr>
+        <tr><td><b>持仓</b></td><td>前 30 名，等权，单票上限 5%</td></tr>
+        <tr><td><b>调仓</b></td><td>每月最后一个交易日生成信号，次月第一个交易日开盘执行</td></tr>
+        <tr><td><b>风控</b></td><td>单票 5%、行业 25%、组合回撤 20% 熔断</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box idea">
+    <div class="box-label">为什么剔除最近一个月？</div>
+    <p>
+      这是动量研究里的标准做法（12-1 momentum）。最近一个月往往存在<strong>短期反转</strong>，
+      把它剔除可以避免「追高买在短期顶部」。这个细节看起来小，但对策略影响很大——
+      它也是「先有逻辑，再调参数」的典型例子。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">14.2</span>第一步：数据</h2>
+
+  <p>
+    我们需要的字段不多，但每个都必须干净：
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>data.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import pandas as pd
+
+REQUIRED = ["date", "symbol", "open", "high", "low", "close",
+            "volume", "amount", "industry", "is_st", "list_date"]
+
+
+def load_panel(path: str) -&gt; pd.DataFrame:
+    df = pd.read_parquet(path)
+    missing = set(REQUIRED) - set(df.columns)
+    if missing:
+        raise ValueError(f"缺少字段: {missing}")
+
+    df["date"] = pd.to_datetime(df["date"])
+    df = df.sort_values(["symbol", "date"]).drop_duplicates(["date", "symbol"])
+
+    # 关键：价格必须已复权（后复权），否则收益是错的
+    assert df["close"].gt(0).all(), "存在非正价格"
+    return df
+
+
+def tradable_mask(df: pd.DataFrame, min_list_days: int = 250) -&gt; pd.Series:
+    """可交易过滤：非 ST、非停牌、上市满一年、有成交。"""
+    listed_long_enough = (df["date"] - df["list_date"]).dt.days &gt;= min_list_days
+    return (~df["is_st"]) &amp; (df["volume"] &gt; 0) &amp; listed_long_enough</code></pre>
+  </div>
+
+  <h2><span class="h2-n">14.3</span>第二步：信号</h2>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>signal.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def build_signal(df: pd.DataFrame, lookback: int = 252,
+                 skip: int = 21, vol_cut: float = 0.70) -&gt; pd.DataFrame:
+    df = df.sort_values(["symbol", "date"]).copy()
+    g = df.groupby("symbol")
+
+    # 12-1 动量：过去 lookback 日收益，跳过最近 skip 日
+    df["mom_12_1"] = g["close"].shift(skip) / g["close"].shift(lookback) - 1
+
+    # 波动率：过去 60 日收益标准差（年化）
+    df["ret_1"] = g["close"].pct_change()
+    df["vol_60"] = g["ret_1"].transform(
+        lambda s: s.rolling(60).std() * np.sqrt(252)
+    )
+
+    # 横截面排名（每个日期内）
+    df["mom_rank"] = df.groupby("date")["mom_12_1"].rank(pct=True)
+    df["vol_rank"] = df.groupby("date")["vol_60"].rank(pct=True)
+
+    # 剔除高波动（最高的 30%）
+    df["eligible"] = df["vol_rank"] &lt;= vol_cut
+
+    # 最终分数：动量排名，行业中性化
+    df["score"] = df["mom_rank"]
+    df["score"] = df.groupby(["date", "industry"])["score"].transform(
+        lambda s: s.rank(pct=True)
+    )
+    return df</code></pre>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">行业中性化的作用</div>
+    <p>
+      如果不做行业中性，动量策略会系统性地超配当年最热的行业（比如 2020 年的白酒、
+      2023 年的 AI）。这会让策略变成「行业 bet」，而不是「选股 alpha」。
+      中性化之后，你在每个行业内部选最强的股票，行业暴露被大幅削弱。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">14.4</span>第三步：组合</h2>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>portfolio.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import pandas as pd
+
+
+def build_target(signal: pd.DataFrame, top_n: int = 30,
+                 max_weight: float = 0.05) -&gt; pd.DataFrame:
+    """每个调仓日选前 top_n 名，等权，单票上限 max_weight。"""
+    rows = []
+    for date, g in signal.groupby("date"):
+        g = g[g["eligible"] &amp; g["mom_12_1"].notna()]
+        if len(g) &lt; top_n * 2:
+            continue
+        picks = g.nlargest(top_n, "score")
+        w = min(1.0 / top_n, max_weight)
+        for _, row in picks.iterrows():
+            rows.append({"date": date, "symbol": row["symbol"], "weight": w})
+    return pd.DataFrame(rows)</code></pre>
+  </div>
+
+  <p>
+    注意 <code>w = min(1/top_n, max_weight)</code>：如果 top_n = 30，等权是 3.33%，
+    低于 5% 上限，所以实际上限不起作用。如果 top_n = 10，等权是 10%，就会被压到 5%，
+    此时总仓位只有 50%，剩下的现金是一个隐性的防御。
+  </p>
+
+  <h2><span class="h2-n">14.5</span>第四步：回测</h2>
+
+  <p>
+    直接复用第八章的 <code>Backtest</code>。注意目标权重的日期必须是<strong>信号日</strong>，
+    引擎会在次日开盘执行。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>run_backtest.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import pandas as pd
+from engine import Backtest, Costs
+from metrics import summary, drawdown_series
+
+df = load_panel("data/panel.parquet")
+df = df[df["date"] &gt;= "2016-01-01"]
+
+signal = build_signal(df)
+target = build_target(signal)
+
+prices = df.set_index(["date", "symbol"])[["open", "high", "low", "close", "volume"]]
+target_wide = target.pivot(index="date", columns="symbol", values="weight").fillna(0.0)
+
+bt = Backtest(prices, target_wide, capital=1_000_000,
+              costs=Costs(commission=0.0003, stamp_tax=0.0005, slippage=0.0015))
+result = bt.run()
+
+print(summary(result["equity"]).round(4))
+print("年化换手:", result["turnover"].mean() * 252)</code></pre>
+  </div>
+
+  <div class="output">CAGR              0.0871
+Vol               0.1934
+Sharpe            0.4504
+Sortino           0.6120
+MaxDD            -0.3127
+Calmar            0.2785
+UnderwaterDays    412.0000
+年化换手: 2.84</div>
+
+  <p>
+    夏普 0.45，最大回撤 −31%，换手 284%/年。这是一个「平庸但真实」的结果——
+    比大多数课程里展示的「年化 40%」可信得多。接下来我们要做的不是优化它，
+    而是<strong>拆解它</strong>。
+  </p>
+
+  <h2><span class="h2-n">14.6</span>第五步：归因——它到底在赚什么钱</h2>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>attribution.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+import statsmodels.api as sm
+
+
+def factor_regression(strategy_ret: pd.Series, factors: pd.DataFrame) -&gt; pd.Series:
+    """把策略收益对市场/规模/价值/动量回归，看 alpha 是否显著。"""
+    df = pd.concat([strategy_ret.rename("r"), factors], axis=1).dropna()
+    X = sm.add_constant(df[factors.columns])
+    model = sm.OLS(df["r"], X).fit(cov_type="HAC", cov_kwds={"maxlags": 5})
+    out = model.params.copy()
+    out["alpha_t"] = model.tvalues["const"]
+    out["r2"] = model.rsquared
+    return out
+
+
+def yearly_returns(equity: pd.Series) -&gt; pd.Series:
+    return equity.resample("YE").last().pct_change().dropna()</code></pre>
+  </div>
+
+  <p>
+    典型的结果会长这样：市场 beta 0.85、动量暴露 0.3、alpha 年化 2.1%（t = 1.2）。
+    翻译成人话：<strong>这个策略 80% 的收益来自「持有股票」这件事本身，
+    动量只贡献了一点点，而且统计上不显著。</strong>
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">如果 alpha 的 t 值小于 2</div>
+    <p>
+      不要急着调参数。先问：是样本太短、还是逻辑不成立、还是被成本吃掉了？
+      三种情况的处理方式完全不同。样本太短 → 延长数据；逻辑不成立 → 换逻辑；
+      成本吃掉 → 降低换手。盲目调参只会让你离真相更远。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">14.7</span>第六步：参数敏感性</h2>
+
+  <p>
+    把动量窗口（6/12/24 个月）、持仓数（20/30/50）、波动率阈值（60%/70%/80%）
+    做成网格，跑 27 组。然后画热力图。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>sensitivity.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import itertools
+import pandas as pd
+
+grid = {
+    "lookback": [126, 252, 504],
+    "top_n": [20, 30, 50],
+    "vol_cut": [0.6, 0.7, 0.8],
+}
+
+rows = []
+for lb, n, vc in itertools.product(*grid.values()):
+    sig = build_signal(df, lookback=lb, vol_cut=vc)
+    tgt = build_target(sig, top_n=n)
+    res = Backtest(prices, tgt.pivot(index="date", columns="symbol",
+                                     values="weight").fillna(0)).run()
+    s = summary(res["equity"])
+    rows.append({"lookback": lb, "top_n": n, "vol_cut": vc,
+                 "sharpe": s["Sharpe"], "cagr": s["CAGR"], "mdd": s["MaxDD"]})
+
+table = pd.DataFrame(rows)
+print(table.pivot_table(index=["lookback", "vol_cut"], columns="top_n",
+                        values="sharpe").round(2))</code></pre>
+  </div>
+
+  <p>
+    你要找的不是最高值，而是<strong>一片连续的高原</strong>。如果最高夏普是 0.62，
+    但周围都是 0.2，那它是噪声；如果一片区域都在 0.45–0.55，说明策略对这个参数不敏感，
+    更可信。
+  </p>
+
+  <h2><span class="h2-n">14.8</span>第七步：成本压力测试</h2>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>cost_stress.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>for bps in [0, 5, 10, 20, 30, 50]:
+    bt = Backtest(prices, target_wide,
+                  costs=Costs(slippage=bps / 1e4))
+    r = bt.run()
+    s = summary(r["equity"])
+    print(f"滑点 {bps:3d}bps → 夏普 {s['Sharpe']:.2f}  CAGR {s['CAGR']:.1%}")</code></pre>
+  </div>
+
+  <div class="output">滑点   0bps → 夏普 0.71  CAGR 12.4%
+滑点   5bps → 夏普 0.62  CAGR 11.0%
+滑点  10bps → 夏普 0.53  CAGR 9.6%
+滑点  20bps → 夏普 0.35  CAGR 6.8%
+滑点  30bps → 夏普 0.18  CAGR 4.0%
+滑点  50bps → 夏普 -0.12  CAGR -1.2%</div>
+
+  <p>
+    这条曲线告诉你：策略在 30bps 以内还能活，超过 40bps 就归零。
+    如果你的实际滑点是 25bps，安全边际很薄；如果市场流动性变差，策略会迅速失效。
+  </p>
+
+  <h2><span class="h2-n">14.9</span>上线前的检查清单</h2>
+
+  <ul class="checklist">
+    <li>样本外（最近 2 年）表现是否与样本内一致？差距多大？</li>
+    <li>扣除真实成本后，夏普是否仍大于 0.4？</li>
+    <li>最大回撤是否在你的心理承受范围内？</li>
+    <li>参数是否位于「高原」而非「孤峰」？</li>
+    <li>收益归因中，alpha 的 t 值是否大于 2？</li>
+    <li>策略容量是否大于你的资金量？</li>
+    <li>有没有明确的退役条件？</li>
+    <li>系统是否支持幂等、对账、熔断？</li>
+    <li>你能否在断网、断电、券商接口故障时手动接管？</li>
+    <li>如果明天开始连续亏 12 个月，你还会执行它吗？</li>
+  </ul>
+
+  <div class="box quote">
+    <div class="box-label">最后一句</div>
+    <p>
+      「一个好的策略，不是让你觉得自己很聪明的策略，是让你在犯错时亏得很少、
+      在对的时候赚得足够的策略。」
+    </p>
+  </div>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>把整个项目跑通，记录你的结果。它和 14.5 节的输出差多少？为什么？</li>
+      <li>把动量换成反转（过去 1 个月跌得最多的），结果如何？这说明你的市场是动量还是反转？</li>
+      <li>加入行业约束（单行业不超过 25%），看夏普和最大回撤的变化。</li>
+      <li>把调仓频率从月改成周，观察换手与成本的变化。收益提升了吗？</li>
+      <li>写一份 3 页的策略报告，包含 8.9 节的所有要素。</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>先写规格，再写代码；七个问题答不上来就不要开始。</li>
+      <li>12-1 动量剔除最近一个月，避免短期反转。</li>
+      <li>行业中性化防止策略变成行业 bet。</li>
+      <li>回测结果要拆解：beta、风格、alpha 各占多少。</li>
+      <li>参数要看「高原」不看「孤峰」。</li>
+      <li>成本压力测试决定策略的生存边界。</li>
+    </ul>
+  </div>
+</section>

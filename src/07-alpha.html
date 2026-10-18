@@ -1,0 +1,440 @@
+<section class="chapter" id="ch6">
+  <div class="ch-head">
+    <div class="ch-num">Chapter 06 · 第二部 研究</div>
+    <h1 class="ch-title">Alpha 与因子<br>把收益拆开看</h1>
+    <p class="ch-abs">
+      你赚的钱，可能只是因为你承担了市场风险——那不叫本事，叫 beta。
+      真正的 alpha 是扣除所有已知风险暴露之后，还剩下的那部分。
+      这一章教你用因子模型把收益拆开，用 IC 衡量预测力，并避开「因子动物园」的陷阱。
+    </p>
+    <div class="ch-meta">
+      <span>阅读 <b>38 分钟</b></span>
+      <span>难度 <b>中级 → 进阶</b></span>
+      <span>代码 <b>单因子测试</b></span>
+    </div>
+  </div>
+
+  <p class="lede">
+    2013 年，一位对冲基金经理在电视上说：「我们的策略跟市场无关，我们靠选股。」
+    主持人问：「那 2008 年你们为什么跌了 40%？」他沉默了三秒。
+    那三秒里发生的事，就是 beta 伪装成 alpha 被当场拆穿。
+  </p>
+
+  <p>
+    这一章的核心任务只有一个：<strong>给你一把刀，把「运气」「市场」「风格」「真本事」切开</strong>。
+    切不开这四样东西，你永远不知道自己为什么赚钱，也就永远不知道什么时候会开始亏。
+  </p>
+
+  <h2><span class="h2-n">6.1</span>Alpha 的定义：回归的残差</h2>
+
+  <p>
+    最干净的定义来自回归。把你的策略收益 <span class="eq-inline">R<sub>p</sub></span>
+    对一组风险因子 <span class="eq-inline">F</span> 做回归：
+  </p>
+
+  <div class="math">
+    R<sub>p</sub> − R<sub>f</sub> = α + β₁F₁ + β₂F₂ + … + β<sub>k</sub>F<sub>k</sub> + ε
+    <span class="eq-n">(6.1)</span>
+  </div>
+
+  <p>
+    这里的 α 就是 alpha：<strong>无法被这些因子解释的平均收益</strong>。
+    如果 α 显著大于 0，说明你有这些因子之外的能力；如果 α ≈ 0 而 R² 很高，
+    说明你只是在重复承担已知风险，赚的是 beta 的钱。
+  </p>
+
+  <div class="box idea">
+    <div class="box-label">一句话记住</div>
+    <p>
+      <strong>Beta 是「你坐在哪条船上」，Alpha 是「你在船上做了什么」。</strong>
+      牛市里所有人都是股神，因为船在涨。只有扣除船的速度，才能看出谁在划桨。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">6.2</span>CAPM：只有一个因子的世界</h2>
+
+  <p>
+    CAPM 是最简单的因子模型：只有一个因子——市场。
+  </p>
+
+  <div class="math">
+    E(R<sub>i</sub>) − R<sub>f</sub> = β<sub>i</sub> [E(R<sub>m</sub>) − R<sub>f</sub>]
+    <span class="eq-n">(6.2)</span>
+  </div>
+
+  <p>
+    β 衡量个股对市场波动的敏感度。β = 1.2 意味着市场涨 1%，它平均涨 1.2%。
+    用回归估计：<span class="eq-inline">β = Cov(R<sub>i</sub>, R<sub>m</sub>) / Var(R<sub>m</sub>)</span>。
+  </p>
+
+  <p>
+    CAPM 在实证上表现很差——它解释了收益的横截面差异不到 1%。
+    但它的思想极其重要：<strong>任何超额收益都必须相对于某个风险基准来定义</strong>。
+    没有基准的「跑赢」是没有意义的。
+  </p>
+
+  <div class="box warn">
+    <div class="box-label">基准选择会改变结论</div>
+    <p>
+      一个只买科技股的策略，用沪深 300 做基准会显示巨大的 alpha；
+      用中证 TMT 指数做基准，alpha 可能归零。这不是数学问题，是诚实问题。
+      <strong>选基准时，要选「和你持仓最像、但不需要你任何技能就能买到」的那个。</strong>
+    </p>
+  </div>
+
+  <h2><span class="h2-n">6.3</span>多因子模型：把风格剥离出来</h2>
+
+  <p>
+    Fama-French 在 CAPM 上加了两个因子：规模（SMB）和价值（HML）。
+    后来 Carhart 加了动量（MOM），Fama-French 又加了盈利（RMW）和投资（CMA）。
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:90px;">因子</th><th>全称</th><th>构造</th><th>经济解释</th></tr></thead>
+      <tbody>
+        <tr><td><b>MKT</b></td><td>市场</td><td>市场组合 − 无风险利率</td><td>承担系统性风险</td></tr>
+        <tr><td><b>SMB</b></td><td>规模</td><td>小市值 − 大市值</td><td>小公司流动性差、风险高</td></tr>
+        <tr><td><b>HML</b></td><td>价值</td><td>高 B/P − 低 B/P</td><td>困境公司需要风险补偿</td></tr>
+        <tr><td><b>MOM</b></td><td>动量</td><td>过去 12 月赢家 − 输家</td><td>反应不足、资金流持续</td></tr>
+        <tr><td><b>RMW</b></td><td>盈利</td><td>高 ROE − 低 ROE</td><td>盈利能力持续性被低估</td></tr>
+        <tr><td><b>CMA</b></td><td>投资</td><td>低投资 − 高投资</td><td>过度扩张的公司回报低</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    这六个因子能解释股票收益横截面的大部分差异。实践含义是：
+    <strong>你的策略如果暴露在 SMB 或 MOM 上，那部分收益不能算 alpha</strong>。
+    很多「小盘成长」基金的超额收益，扣除风格后接近于零。
+  </p>
+
+  <h2><span class="h2-n">6.4</span>因子怎么造：排序、分组、多空</h2>
+
+  <p>
+    一个因子本质上是一个<strong>打分函数</strong>：给每只股票一个数字，然后按数字排序。
+    标准流程如下：
+  </p>
+
+  <ol>
+    <li><strong>定义原始指标</strong>：比如账面市值比 B/P。</li>
+    <li><strong>清洗</strong>：剔除负值、极值、缺失。</li>
+    <li><strong>标准化</strong>：横截面 z-score 或排序。</li>
+    <li><strong>中性化</strong>：剔除行业、市值的影响（否则你测的是行业或规模）。</li>
+    <li><strong>分组</strong>：按分位数分成 5 组或 10 组。</li>
+    <li><strong>构建组合</strong>：等权或市值加权，做多最高组、做空最低组。</li>
+    <li><strong>评估</strong>：看多空收益、单调性、IC、换手。</li>
+  </ol>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 300" role="img" aria-label="因子分层回测示意">
+        <!-- axes -->
+        <line x1="70" y1="240" x2="620" y2="240" stroke="#d8d2c3"/>
+        <line x1="70" y1="30" x2="70" y2="240" stroke="#d8d2c3"/>
+        <text x="18" y="150" font-family="monospace" font-size="9.5" fill="#79818b" transform="rotate(-90 26 150)">年化超额收益</text>
+
+        <!-- bars: decile monotonic -->
+        <g>
+          <rect x="96" y="196" width="42" height="44" fill="#b9c6d4"/>
+          <rect x="150" y="184" width="42" height="56" fill="#aab9c9"/>
+          <rect x="204" y="170" width="42" height="70" fill="#9aabbe"/>
+          <rect x="258" y="156" width="42" height="84" fill="#8a9db3"/>
+          <rect x="312" y="140" width="42" height="100" fill="#7a90a9"/>
+          <rect x="366" y="122" width="42" height="118" fill="#6a829e"/>
+          <rect x="420" y="104" width="42" height="136" fill="#5a7493"/>
+          <rect x="474" y="86" width="42" height="154" fill="#4a6688"/>
+          <rect x="528" y="66" width="42" height="174" fill="#3a587d"/>
+          <rect x="582" y="44" width="42" height="196" fill="#1d3f63"/>
+        </g>
+        <text x="96" y="258" font-family="monospace" font-size="9.5" fill="#79818b">D1（最低）</text>
+        <text x="548" y="258" font-family="monospace" font-size="9.5" fill="#79818b">D10（最高）</text>
+
+        <!-- spread bracket -->
+        <line x1="117" y1="32" x2="603" y2="32" stroke="#d8d2c3"/>
+        <line x1="117" y1="27" x2="117" y2="37" stroke="#d8d2c3"/>
+        <line x1="603" y1="27" x2="603" y2="37" stroke="#d8d2c3"/>
+        <text x="360" y="24" font-family="monospace" font-size="9.5" fill="#b0512f" text-anchor="middle">多空价差 = D10 − D1</text>
+
+        <text x="70" y="290" font-family="sans-serif" font-size="11" fill="#454d57">如果柱子高度随分位单调上升，因子有效；如果中间高两头低，说明关系是非线性的。</text>
+      </svg>
+    </div>
+    <figcaption><b>图 6-1</b>　分层回测（decile spread）。单调性是因子质量的第一眼判断——比 IC 更直观，也更难伪造。</figcaption>
+  </figure>
+
+  <div class="box note">
+    <div class="box-label">分组数量的取舍</div>
+    <p>
+      分 5 组，每组样本多、噪声小，但区分度低；分 10 组，区分度高，但极端组容易受个别股票影响。
+      学术研究常用 10 组，实盘常用 5 组或直接用连续打分。个人建议：<strong>先用 5 组看单调性，
+      再用 10 组看极端收益</strong>。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">6.5</span>IC：因子预测力的相关系数</h2>
+
+  <p>
+    IC（Information Coefficient）是每个横截面上，<strong>因子值与未来收益的相关系数</strong>。
+    它是因子研究里最常用的单一指标。
+  </p>
+
+  <div class="math">
+    IC<sub>t</sub> = corr( factor<sub>i,t</sub> , return<sub>i,t+1</sub> ) &nbsp;&nbsp;（横截面）
+    <span class="eq-n">(6.3)</span>
+  </div>
+
+  <p>
+    几个经验基准：
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th>含义</th><th>经验阈值</th></tr></thead>
+      <tbody>
+        <tr><td><b>IC 均值</b></td><td>预测力的方向与强度</td><td>|均值| &gt; 0.03 已可用，&gt; 0.06 很好</td></tr>
+        <tr><td><b>ICIR</b></td><td>IC 均值 / IC 标准差</td><td>&gt; 0.3 可用，&gt; 0.5 优秀</td></tr>
+        <tr><td><b>IC 胜率</b></td><td>IC &gt; 0 的期数占比</td><td>&gt; 55% 说明稳定</td></tr>
+        <tr><td><b>RankIC</b></td><td>用秩相关代替线性相关</td><td>对异常值更稳健，通常更可信</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="box warn">
+    <div class="box-label">IC 高不等于能赚钱</div>
+    <p>
+      IC 衡量的是「排序能力」，不是「收益能力」。一个 IC = 0.05 的因子，
+      如果只在对冲成本很高的股票上有效，扣掉交易成本后可能亏钱。
+      更重要的检验永远是：<strong>扣成本后的多空收益</strong>。
+    </p>
+  </div>
+
+  <h2><span class="h2-n">6.6</span>风格因子地图</h2>
+
+  <p>
+    所有因子最终都能归入几个大类。理解这张地图，你就不会把同一个东西换个名字当成新发现。
+  </p>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>价值 Value</h4>
+      <p>B/P、E/P、EV/EBITDA、股息率。逻辑：便宜的东西长期跑赢。失效期：2010s 成长股泡沫、价值陷阱。</p>
+    </div>
+    <div class="card">
+      <h4>动量 Momentum</h4>
+      <p>过去 3–12 月收益。逻辑：反应不足与资金流。失效期：剧烈反转（2009、2020 年 3 月）。</p>
+    </div>
+    <div class="card">
+      <h4>质量 Quality</h4>
+      <p>ROE、毛利率、低负债、盈利稳定性。逻辑：好公司被低估。与价值常负相关。</p>
+    </div>
+    <div class="card">
+      <h4>低波 Low Vol</h4>
+      <p>过去波动率、beta。逻辑：投资者偏好彩票型股票，低波被低估。杠杆约束下的必然结果。</p>
+    </div>
+    <div class="card">
+      <h4>规模 Size</h4>
+      <p>市值。逻辑：小公司风险溢价。但 1980 年后在美股大幅衰减，A 股仍有争议。</p>
+    </div>
+    <div class="card">
+      <h4>流动性 Liquidity</h4>
+      <p>换手率、Amihud 非流动性。逻辑：流动性差的资产需要补偿。与规模高度相关。</p>
+    </div>
+  </div>
+
+  <p>
+    这六类之间并不独立。小市值股票往往流动性差、波动高；价值股往往质量差。
+    所以你在测试一个新因子时，必须做<strong>正交化</strong>：剔除它和已知因子的相关性，
+    看剩下的部分还有没有预测力。
+  </p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>neutralize.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+
+def neutralize(factor: pd.Series, exposures: pd.DataFrame) -&gt; pd.Series:
+    """对因子做横截面回归，返回残差（已剔除 exposure 的影响）。
+    factor / exposures 的 index 必须对齐（同一横截面）。
+    """
+    y = factor.values
+    X = np.column_stack([np.ones(len(exposures)), exposures.values])
+    mask = np.isfinite(y) &amp; np.isfinite(X).all(axis=1)
+    resid = np.full_like(y, np.nan, dtype=float)
+    beta, *_ = np.linalg.lstsq(X[mask], y[mask], rcond=None)
+    resid[mask] = y[mask] - X[mask] @ beta
+    return pd.Series(resid, index=factor.index)
+
+
+# 行业中性化：先做行业哑变量，再回归
+def industry_neutralize(factor: pd.Series, industry: pd.Series) -&gt; pd.Series:
+    dummies = pd.get_dummies(industry, drop_first=True).astype(float)
+    return neutralize(factor, dummies)</code></pre>
+  </div>
+
+  <h2><span class="h2-n">6.7</span>因子衰减与换手</h2>
+
+  <p>
+    一个因子在第 t 期给出的信号，对 t+1 期的收益预测最强，然后逐渐衰减。
+    衰减速度决定了你的调仓频率，也决定了交易成本。
+  </p>
+
+  <figure>
+    <div class="fig-frame">
+      <svg viewBox="0 0 660 230" role="img" aria-label="因子 IC 衰减曲线">
+        <line x1="60" y1="190" x2="620" y2="190" stroke="#d8d2c3"/>
+        <line x1="60" y1="24" x2="60" y2="190" stroke="#d8d2c3"/>
+
+        <!-- fast decay -->
+        <path d="M60 60 C120 110 180 150 260 168 C340 180 460 186 620 188"
+              fill="none" stroke="#b0512f" stroke-width="2"/>
+        <!-- slow decay -->
+        <path d="M60 60 C140 78 220 104 320 130 C420 154 520 168 620 176"
+              fill="none" stroke="#1d3f63" stroke-width="2"/>
+
+        <text x="470" y="150" font-family="monospace" font-size="10" fill="#1d3f63">慢衰减（月频）</text>
+        <text x="300" y="182" font-family="monospace" font-size="10" fill="#b0512f">快衰减（日频）</text>
+
+        <text x="60" y="210" font-family="monospace" font-size="9.5" fill="#a8aeb6">t+1</text>
+        <text x="600" y="210" font-family="monospace" font-size="9.5" fill="#a8aeb6">t+60</text>
+        <text x="8" y="110" font-family="monospace" font-size="9.5" fill="#79818b" transform="rotate(-90 18 110)">IC</text>
+      </svg>
+    </div>
+    <figcaption><b>图 6-2</b>　IC 衰减曲线。衰减越快，越需要高频调仓，也就越容易被成本吃掉。选择因子时，「衰减慢」和「IC 高」同样重要。</figcaption>
+  </figure>
+
+  <p>
+    换手率的估算很简单：每个调仓期，计算组合中权重变化绝对值之和的一半。
+    年化换手 500% 意味着你每年把整个组合换了 5 遍。按单边 10bps 成本算，
+    年成本约 10%。这个数字必须从你的毛收益里扣掉。
+  </p>
+
+  <h2><span class="h2-n">6.8</span>从因子到组合</h2>
+
+  <p>
+    有了因子分数，怎么变成持仓？最简单的三种方式：
+  </p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th style="width:130px;">方法</th><th>做法</th><th>优点</th><th>缺点</th></tr></thead>
+      <tbody>
+        <tr><td><b>阈值法</b></td><td>取分数最高的 N 只，等权</td><td>简单、透明</td><td>集中度高、换手大</td></tr>
+        <tr><td><b>分位数加权</b></td><td>按分数排名分配权重</td><td>平滑、分散</td><td>可能持有不值得持有的股票</td></tr>
+        <tr><td><b>优化法</b></td><td>在风险约束下最大化预期收益</td><td>理论最优、可控风险</td><td>对输入误差敏感（见第九章）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>
+    对个人来说，<strong>阈值法 + 行业约束</strong>是性价比最高的起点。
+    它不完美，但足够透明，你能清楚知道每一笔持仓的理由。
+  </p>
+
+  <h2><span class="h2-n">6.9</span>动手：一个单因子测试框架</h2>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>factor_test.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>import numpy as np
+import pandas as pd
+
+def factor_test(panel: pd.DataFrame, factor: str, ret: str,
+                n_groups: int = 5, quantile: bool = True) -&gt; dict:
+    """panel 需包含: date, symbol, factor, forward_return"""
+    rows = []
+    for date, g in panel.groupby("date"):
+        g = g.dropna(subset=[factor, ret])
+        if len(g) &lt; n_groups * 5:
+            continue
+        # 横截面排序
+        if quantile:
+            g = g.assign(score=g[factor].rank(pct=True))
+        else:
+            g = g.assign(score=(g[factor] - g[factor].mean()) / g[factor].std())
+        g = g.assign(grp=pd.qcut(g["score"], n_groups, labels=False, duplicates="drop"))
+
+        ic = g["score"].corr(g[ret], method="spearman")
+        grp_ret = g.groupby("grp")[ret].mean()
+        rows.append({"date": date, "ic": ic,
+                     **{f"g{k}": v for k, v in grp_ret.items()}})
+
+    res = pd.DataFrame(rows).set_index("date")
+    gcols = [c for c in res.columns if c.startswith("g")]
+    res["long_short"] = res[gcols[-1]] - res[gcols[0]]
+
+    return {
+        "ic_mean": res["ic"].mean(),
+        "ic_std": res["ic"].std(),
+        "icir": res["ic"].mean() / res["ic"].std(),
+        "ic_winrate": (res["ic"] &gt; 0).mean(),
+        "ls_mean": res["long_short"].mean(),
+        "ls_sharpe": res["long_short"].mean() / res["long_short"].std() * np.sqrt(12),
+        "group_returns": res[gcols].mean(),
+        "series": res,
+    }</code></pre>
+  </div>
+
+  <p>用法与输出解读：</p>
+
+  <div class="code-block">
+    <div class="code-head"><span class="fname"><span class="dot"></span>run.py</span><button class="copy-btn">COPY</button></div>
+<pre><code>panel = load_panel("2020-01-01", "2025-01-01", freq="M")
+panel["forward_return"] = (panel.groupby("symbol")["close"]
+                               .shift(-1) / panel["close"] - 1)
+
+out = factor_test(panel, factor="bp", ret="forward_return")
+print(f"IC {out['ic_mean']:.4f}  ICIR {out['icir']:.2f}  "
+      f"胜率 {out['ic_winrate']:.1%}")
+print(out["group_returns"].round(4))</code></pre>
+  </div>
+
+  <div class="output">IC 0.0412  ICIR 0.38  胜率 58.3%
+grp
+0    0.0031
+1    0.0058
+2    0.0082
+3    0.0104
+4    0.0149</div>
+
+  <p>
+    这组数字说明：因子单调，最高组月均超额 1.49%，最低组 0.31%，多空价差约 1.18%/月。
+    ICIR 0.38 属于「可用但不惊艳」。下一步该做的不是调参，而是<strong>扣成本、看换手、做行业中性化</strong>。
+  </p>
+
+  <h2><span class="h2-n">6.10</span>陷阱：因子动物园</h2>
+
+  <p>
+    学术界已经发表了 400 多个「显著」的因子。其中大部分是数据挖掘的产物。
+    2016 年，Harvey、Liu 和 Zhu 发表了一篇著名论文，指出考虑到多重检验，
+    新因子的 t 值需要超过 <strong>3.0</strong>（而不是传统的 2.0）才值得认真对待。
+  </p>
+
+  <ul class="checklist">
+    <li>只在论文里有效的因子，通常在你手里也无效——因为发表本身就是一种选择偏差。</li>
+    <li>因子拥挤：当太多钱涌向同一个因子，它的收益会被压缩，直到某天剧烈反转。</li>
+    <li>「新因子」往往只是旧因子的非线性变换，先做相关性检验。</li>
+    <li>因子在不同市场、不同时期的表现差异巨大，别直接照搬美股结论。</li>
+  </ul>
+
+  <div class="exercise">
+    <h4>本章练习</h4>
+    <ol>
+      <li>用 <code>factor_test</code> 测试「过去 20 日收益率」这个动量因子，看它在你的市场上是动量还是反转。</li>
+      <li>把同一个因子分别做「原始」和「行业中性化」两个版本，比较 IC 的变化。中性化后 IC 上升还是下降？为什么？</li>
+      <li>计算你的因子多空组合的年化换手率，估算交易成本，再看扣成本后的夏普。</li>
+      <li>找两个已知因子（比如价值和低波），计算它们的相关性。它们真的独立吗？</li>
+    </ol>
+  </div>
+
+  <div class="summary">
+    <h4>本章要点</h4>
+    <ul>
+      <li>Alpha 是扣除风险因子暴露后的回归残差；没有基准就没有 alpha。</li>
+      <li>CAPM 只有一个市场因子，解释力弱，但奠定了「相对风险」的思维。</li>
+      <li>FF5 + 动量能解释大部分风格收益；你的超额可能只是风格暴露。</li>
+      <li>因子 = 打分函数 + 排序 + 分组；单调性比 IC 更直观。</li>
+      <li>IC 均值 0.03 可用，ICIR 0.3 可用；但最终要看扣成本后的多空收益。</li>
+      <li>因子动物园里大部分是噪声；新因子需要 t &gt; 3 且通过正交化检验。</li>
+    </ul>
+  </div>
+</section>
